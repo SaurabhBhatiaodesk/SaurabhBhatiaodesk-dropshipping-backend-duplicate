@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "nodemon server.js && npm run migrate",
+    "start": "node server.js && npm run migrate",
     "migrate": "sequelize db:migrate"
   },
   "keywords": [],
