@@ -16,7 +16,6 @@ defaultSettingRouter.get("/fetchStoreLocation", verifyToken,   defaultSettingCon
 // fetch Shop Tags
 // *****************************************************************************************************************//
 
-defaultSettingRouter.get("/fetchShopTags", verifyToken, defaultSettingController.fetchShopTags)
 // *****************************************************************************************************************//
 // save Defaut Setting
 // *****************************************************************************************************************//
