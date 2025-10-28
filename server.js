@@ -385,7 +385,7 @@ cron.schedule("* * * * *", async () => {
         const csvExpire = items?.dataValues?.expireDate;
         const csvBufferQuantity = items?.dataValues?.bufferQqantity;
 
-        // console.log(`csvBufferQuantity ${index} ::`, csvBufferQuantity)
+        console.log(`csvBufferQuantity ${index} ::`, csvBufferQuantity)
 
         // Push shop to allCsvFilesShops array
         allCsvFilesShops.push(shop);
@@ -466,6 +466,8 @@ cron.schedule("* * * * *", async () => {
               // console.log("csvFile if ::", csvFile?.csvFileData);
 
               csvFile?.csvFileData.forEach(async (sku) => {
+                // console.log(sku,'------------------sku------------------????')
+                // return true
                 // ****************************************************************************************************************************************
                 // fetch locations of store starts
                 // ****************************************************************************************************************************************
@@ -489,19 +491,19 @@ cron.schedule("* * * * *", async () => {
                 };
 
                 await fetch(
-                  `https://${csvFile?.shop}/admin/api/2023-10/graphql.json`,
+                  `https://${csvFile?.shop}/admin/api/2025-10/graphql.json`,
                   requestOptions
                 )
                   .then((response) => response.text())
                   .then((result) => {
                     let allLocations = [];
                     storeLocationData.push(JSON.parse(result));
-                    // console.log(`result?.data?.shop ${index} :::`, JSON.parse(result))
+                    console.log(`result?.data?.shop :::`, JSON.parse(result))
                     storeLocationData.forEach(async (data, index) => {
-                      // console.log(`data?.data?.products?.edges ${index} :::`, data?.data?.products?.edges)
+                      console.log(`data?.data?.products?.edges ${index} :::`, data?.data?.products?.edges)
                       const edgesArray =
                         data?.data?.shop?.locations?.edges || [];
-                      // console.log(`edgesArray ${index} :::`, edgesArray);
+                      console.log(`edgesArray ${index} :::`, edgesArray);
 
                       const item = edgesArray[0];
                       if (item) {
@@ -526,10 +528,43 @@ cron.schedule("* * * * *", async () => {
                         );
                         myHeaders.append("Content-Type", "application/json");
 
-                        var graphql = JSON.stringify({
-                          query: `{\r\n  products(first: 1, query: "sku:${sku?.SKU}}") {\r\n    edges {\r\n      node {\r\n        id\r\n        variants(first: 1) {\r\n          edges {\r\n            node {\r\n              inventoryQuantity\r\n              id\r\n              weight\r\n              sku\r\n              inventoryItem {\r\n                id\r\n                inventoryLevel(locationId: \"${locationId}\") {\r\n                  id\r\n                  location {\r\n                    id\r\n                  }\r\n                }\r\n              }\r\n            }\r\n          }\r\n        }\r\n      }\r\n    }\r\n  }\r\n  }\r\n`,
-                          variables: {},
-                        });
+                      var graphql = JSON.stringify({
+  query: `{
+    products(first: 1, query: "sku:${sku?.SKU}}") {
+      edges {
+        node {
+          id
+          variants(first: 1) {
+            edges {
+              node {
+                id
+                sku
+                inventoryQuantity
+                inventoryItem {
+                  id
+                  measurement {
+                    weight {
+                      value
+                      unit
+                    }
+                  }
+                  inventoryLevel(locationId: "${locationId}") {
+                    id
+                    location {
+                      id
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }`,
+  variables: {}
+});
+
                         var requestOptions = {
                           method: "POST",
                           headers: myHeaders,
@@ -538,7 +573,7 @@ cron.schedule("* * * * *", async () => {
                         };
 
                         await fetch(
-                          `https://${csvFile?.shop}/admin/api/2023-10/graphql.json`,
+                          `https://${csvFile?.shop}/admin/api/2025-10/graphql.json`,
                           requestOptions
                         )
                           .then((response) => response.text())
@@ -546,26 +581,25 @@ cron.schedule("* * * * *", async () => {
                           // .then((result) => console.log("JSON.parse :::", result))
 
                           .then((result) => {
-                            // console.log("JSON.parse :::", JSON.parse(result))
+                            console.log("JSON.parse :::", JSON.parse(result))
                             skuMatchedProducts.push(JSON.parse(result));
-                            // console.log("skuMatchedProducts :::", skuMatchedProducts)
+                            console.log("skuMatchedProducts :::", skuMatchedProducts)
 
                             skuMatchedProducts.forEach((data) => {
-                              // console.log(`data?.data?.products?.edges ${index} :::`, data?.data?.products?.edges)
                               const edgesArray =
                                 data?.data?.products?.edges || [];
-                              // console.log(`edgesArray ${index} :::`, edgesArray);
+                              console.log(`edgesArray ${index} :::`, edgesArray);
 
                               edgesArray.forEach((edge) => {
                                 // Check if node and variants exist
                                 const nodeArray =
                                   edge?.node?.variants?.edges || [];
-                                // console.log(`nodeArrayeeee ${index} :::`, nodeArray);
+                                console.log(`nodeArrayeeee :::`, nodeArray);
                                 nodeArray.forEach(async (node, index) => {
-                                  // console.log(
-                                  //   `node?.node?.id ${index} ::`,
-                                  //   node?.node?.id
-                                  // );
+                                  console.log(
+                                    `node?.node?.id ${index} ::`,
+                                    node?.node?.id
+                                  );
                                   // const inventoryItemId =
                                   const inventoryItemId =
                                     node?.node?.inventoryItem?.id;
