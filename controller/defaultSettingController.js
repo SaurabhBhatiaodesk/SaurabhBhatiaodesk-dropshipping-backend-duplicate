@@ -47,7 +47,7 @@ class DefaultSettingController {
         redirect: "follow",
       };
       const data = await fetch(
-        `https://${fetchuser.dataValues.shop}/admin/api/2023-10/graphql.json`,
+        `https://${fetchuser.dataValues.shop}/admin/api/2025-10/graphql.json`,
         requestOptions
       );
       const response = await data.text();
@@ -103,7 +103,7 @@ class DefaultSettingController {
         redirect: "follow",
       };
       const data = await fetch(
-        `https://${fetchuser.dataValues.shop}/admin/api/2023-10/graphql.json`,
+        `https://${fetchuser.dataValues.shop}/admin/api/2025-10/graphql.json`,
         requestOptions
       );
       const response = await data.text();
@@ -112,6 +112,8 @@ class DefaultSettingController {
       let foundMatch = false;
       const tagToFind = tags.toLowerCase();
       for (const item of parseData?.data?.shop?.productTags?.edges) {
+        console.log(item,'--------------item---------------<>')
+        console.log(item?.node,'--------------item---------------node----------------<>')
         const itemTag = item.node.toLowerCase(); // Convert the tag from the data to lowercase
 
         console.log("itemTag", itemTag);
@@ -260,6 +262,7 @@ class DefaultSettingController {
               processedCount++
             );
 
+            console.log(productTags,'---------------productTags---------------')
             if (productTags == [] || productTags == "" || productTags == null) {
               console.log("empty tags----------------------------------");
 
@@ -286,17 +289,55 @@ class DefaultSettingController {
                   value[fileHeaders] &&
                   value[fileInventoryHeaders] !== undefined
                 ) {
+
                   var graphql = JSON.stringify({
-                    query: `{\r\n  products(first: 1, query: \"sku:${value[fileHeaders]}\") {\r\n    edges {\r\n      node {\r\n        id\r\n        variants(first: 1) {\r\n          edges {\r\n            node {\r\n              id\r\n              weight\r\n              sku\r\n              inventoryItem {\r\n                id\r\n                inventoryLevel(locationId: \"gid://shopify/Location/${locations}\") {\r\n                  id\r\n                  location {\r\n                    id\r\n                  }\r\n                }\r\n              }\r\n            }\r\n          }\r\n        }\r\n      }\r\n    }\r\n  }\r\n}\r\n`,
-                    variables: {},
-                  });
+  query: `
+    {
+      products(first: 1, query: "sku:${value[fileHeaders]}") {
+        edges {
+          node {
+            id
+            title
+            variants(first: 1) {
+              edges {
+                node {
+                  id
+                  sku
+                  inventoryQuantity
+                  inventoryItem {
+                    id
+                    measurement {
+                      weight {
+                        value
+                        unit
+                      }
+                    }
+                    inventoryLevel(locationId: "gid://shopify/Location/${locations}") {
+                      id
+                      location {
+                        id
+                        name
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  `,
+  variables: {}
+});
+
                   var requestOptions = {
                     method: "POST",
                     headers: myHeaders,
                     body: graphql,
                   };
                   const itemidGet = await fetch(
-                    `https://${fetchuser.dataValues.shop}/admin/api/2023-10/graphql.json`,
+                    `https://${fetchuser.dataValues.shop}/admin/api/2025-10/graphql.json`,
                     requestOptions
                   );
 
@@ -327,7 +368,7 @@ class DefaultSettingController {
                     redirect: "follow",
                   };
                   const updatedata = await fetch(
-                    `https://${fetchuser.dataValues.shop}/admin/api/2023-10/graphql.json`,
+                    `https://${fetchuser.dataValues.shop}/admin/api/2025-10/graphql.json`,
                     requestOptions
                   );
 
@@ -346,14 +387,55 @@ class DefaultSettingController {
                   };
 
                   const updateContinewSeeling = await fetch(
-                    `https://${fetchuser.dataValues.shop}/admin/api/2023-10/graphql.json`,
+                    `https://${fetchuser.dataValues.shop}/admin/api/2025-10/graphql.json`,
                     requestOptions
                   );
                 } else if (lowercaseshopifyInventoryHeaders == "barcode") {
+                  // var graphql = JSON.stringify({
+                  //   query: `{\r\n  products(first: 10, query: \"barcode:${value[fileHeaders]}\") {\r\n    edges {\r\n      node {\r\n        id\r\n        variants(first: 1) {\r\n          edges {\r\n            node {\r\n              id\r\n              weight\r\n              sku\r\n              inventoryItem {\r\n                id\r\n                inventoryLevel(locationId: \"gid://shopify/Location/${locations}\") {\r\n                  id\r\n                  location {\r\n                    id\r\n                  }\r\n                }\r\n              }\r\n            }\r\n          }\r\n        }\r\n      }\r\n    }\r\n  }\r\n}`,
+                  //   variables: {},
+                  // });
                   var graphql = JSON.stringify({
-                    query: `{\r\n  products(first: 10, query: \"barcode:${value[fileHeaders]}\") {\r\n    edges {\r\n      node {\r\n        id\r\n        variants(first: 1) {\r\n          edges {\r\n            node {\r\n              id\r\n              weight\r\n              sku\r\n              inventoryItem {\r\n                id\r\n                inventoryLevel(locationId: \"gid://shopify/Location/${locations}\") {\r\n                  id\r\n                  location {\r\n                    id\r\n                  }\r\n                }\r\n              }\r\n            }\r\n          }\r\n        }\r\n      }\r\n    }\r\n  }\r\n}`,
-                    variables: {},
-                  });
+  query: `
+    {
+      products(first: 10, query: "barcode:${value[fileHeaders]}") {
+        edges {
+          node {
+            id
+            title
+            variants(first: 1) {
+              edges {
+                node {
+                  id
+                  sku
+                  inventoryQuantity
+                  inventoryItem {
+                    id
+                    measurement {
+                      weight {
+                        value
+                        unit
+                      }
+                    }
+                    inventoryLevel(locationId: "gid://shopify/Location/${locations}") {
+                      id
+                      location {
+                        id
+                        name
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  `,
+  variables: {}
+});
+
                   var requestOptions = {
                     method: "POST",
                     headers: myHeaders,
@@ -361,10 +443,11 @@ class DefaultSettingController {
                     redirect: "follow",
                   };
                   const itemidGet = await fetch(
-                    `https://${fetchuser?.dataValues?.shop}/admin/api/2023-10/graphql.json`,
+                    `https://${fetchuser?.dataValues?.shop}/admin/api/2025-10/graphql.json`,
                     requestOptions
                   );
                   const responseItemID = await itemidGet.text();
+                  console.log(responseItemID,'-----------responseItemID---------')
                   const data = JSON.parse(responseItemID);
 
                   const inventoryItemID =
@@ -379,7 +462,7 @@ class DefaultSettingController {
                     inventoryItemID
                   );
                   console.log(
-                    "ProductVariantIDProductVariantIDProductVariantID",
+                    "ProductVariantIDProductVariantIDProductVariantID-----barcode-423",
                     ProductVariantID
                   );
 
@@ -395,9 +478,10 @@ class DefaultSettingController {
                   };
 
                   const updateQqantity = await fetch(
-                    `https://${fetchuser?.dataValues?.shop}/admin/api/2023-10/graphql.json`,
+                    `https://${fetchuser?.dataValues?.shop}/admin/api/2025-10/graphql.json`,
                     requestOptions
                   );
+                  console.log(updateQqantity,'updateQqantity--------updateQqantity')
 
                   // *****************************************************************************************************************//
                   // update inventory Policy
@@ -415,9 +499,10 @@ class DefaultSettingController {
                   };
 
                   const updateContinewSeeling = await fetch(
-                    `https://${fetchuser?.dataValues?.shop}/admin/api/2023-10/graphql.json`,
+                    `https://${fetchuser?.dataValues?.shop}/admin/api/2025-10/graphql.json`,
                     requestOptions
                   );
+                  console.log(updateContinewSeeling,'----------------updateContinewSeeling----------------')
                 }
               }
             } else {
@@ -436,22 +521,65 @@ class DefaultSettingController {
               );
               productTags.map(async (tagsvalue, index) => {
                 console.log("tagsvaluetagsvalue=>>>>>>>", tagsvalue);
+                console.log("value[fileTagHeader]=>>>>>>>", value[fileTagHeader]);
 
                 if (value[fileTagHeader] == tagsvalue) {
                   console.log("value.Tagvalue.Tagvalue.Tag=>>>>>>>");
                   for (const locations of alllocations) {
                     if (lowercaseshopifyInventoryHeaders == "sku") {
-                      var graphql = JSON.stringify({
-                        query: `{\r\n  products(first: 1, query: \"sku:${value[fileHeaders]}\") {\r\n    edges {\r\n      node {\r\n        id\r\n        variants(first: 1) {\r\n          edges {\r\n            node {\r\n              id\r\n              weight\r\n              sku\r\n              inventoryItem {\r\n                id\r\n                inventoryLevel(locationId: \"gid://shopify/Location/${locations}\") {\r\n                  id\r\n                  location {\r\n                    id\r\n                  }\r\n                }\r\n              }\r\n            }\r\n          }\r\n        }\r\n      }\r\n    }\r\n  }\r\n}\r\n`,
-                        variables: {},
-                      });
+                      // var graphql = JSON.stringify({
+                      //   query: `{\r\n  products(first: 1, query: \"sku:${value[fileHeaders]}\") {\r\n    edges {\r\n      node {\r\n        id\r\n        variants(first: 1) {\r\n          edges {\r\n            node {\r\n              id\r\n              weight\r\n              sku\r\n              inventoryItem {\r\n                id\r\n                inventoryLevel(locationId: \"gid://shopify/Location/${locations}\") {\r\n                  id\r\n                  location {\r\n                    id\r\n                  }\r\n                }\r\n              }\r\n            }\r\n          }\r\n        }\r\n      }\r\n    }\r\n  }\r\n}\r\n`,
+                      //   variables: {},
+                      // });
+                     
+                     var graphql = JSON.stringify({
+  query: `
+    {
+      products(first: 1, query: "sku:${value[fileHeaders]}") {
+        edges {
+          node {
+            id
+            title
+            variants(first: 1) {
+              edges {
+                node {
+                  id
+                  sku
+                  inventoryQuantity
+                  inventoryItem {
+                    id
+                    measurement {
+                      weight {
+                        value
+                        unit
+                      }
+                    }
+                    inventoryLevel(locationId: "gid://shopify/Location/${locations}") {
+                      id
+                      location {
+                        id
+                        name
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  `,
+  variables: {}
+});
+
                       var requestOptions = {
                         method: "POST",
                         headers: myHeaders,
                         body: graphql,
                       };
                       const itemidGet = await fetch(
-                        `https://${fetchuser.dataValues.shop}/admin/api/2023-10/graphql.json`,
+                        `https://${fetchuser.dataValues.shop}/admin/api/2025-10/graphql.json`,
                         requestOptions
                       );
                       const responseItemID = await itemidGet.text();
@@ -469,7 +597,7 @@ class DefaultSettingController {
                         inventoryItemID
                       );
                       console.log(
-                        "ProductVariantIDProductVariantIDProductVariantID",
+                        "ProductVariantIDProductVariantIDProductVariantID----sku600",
                         ProductVariantID
                       );
 
@@ -484,6 +612,8 @@ class DefaultSettingController {
                         body: graphql,
                         redirect: "follow",
                       };
+
+                      console.log('----->>>>> requestOptions---',requestOptions)
 
                       const updatedata = await fetch(
                         `https://${fetchuser.dataValues.shop}/admin/api/2023-10/graphql.json`,
@@ -506,14 +636,58 @@ class DefaultSettingController {
                       };
 
                       const updateContinewSeeling = await fetch(
-                        `https://${fetchuser.dataValues.shop}/admin/api/2023-10/graphql.json`,
+                        `https://${fetchuser.dataValues.shop}/admin/api/2025-10/graphql.json`,
                         requestOptions
                       );
+                      console.log(updateContinewSeeling,'------------updateContinewSeeling---------641')
                     } else if (lowercaseshopifyInventoryHeaders == "barcode") {
+                      // var graphql = JSON.stringify({
+                      //   query: `{\r\n  products(first: 10, query: \"barcode:${value[fileHeaders]}\") {\r\n    edges {\r\n      node {\r\n        id\r\n        variants(first: 1) {\r\n          edges {\r\n            node {\r\n              id\r\n              weight\r\n              sku\r\n              inventoryItem {\r\n                id\r\n                inventoryLevel(locationId: \"gid://shopify/Location/${locations}\") {\r\n                  id\r\n                  location {\r\n                    id\r\n                  }\r\n                }\r\n              }\r\n            }\r\n          }\r\n        }\r\n      }\r\n    }\r\n  }\r\n}`,
+                      //   variables: {},
+                      // });
+
                       var graphql = JSON.stringify({
-                        query: `{\r\n  products(first: 10, query: \"barcode:${value[fileHeaders]}\") {\r\n    edges {\r\n      node {\r\n        id\r\n        variants(first: 1) {\r\n          edges {\r\n            node {\r\n              id\r\n              weight\r\n              sku\r\n              inventoryItem {\r\n                id\r\n                inventoryLevel(locationId: \"gid://shopify/Location/${locations}\") {\r\n                  id\r\n                  location {\r\n                    id\r\n                  }\r\n                }\r\n              }\r\n            }\r\n          }\r\n        }\r\n      }\r\n    }\r\n  }\r\n}`,
-                        variables: {},
-                      });
+  query: `
+    {
+      products(first: 10, query: "barcode:${value[fileHeaders]}") {
+        edges {
+          node {
+            id
+            variants(first: 1) {
+              edges {
+                node {
+                  id
+                  sku
+                  inventoryQuantity
+                  inventoryItem {
+                    id
+                    measurement {
+                      weight {
+                        value
+                        unit
+                      }
+                    }
+                    inventoryLevel(locationId: "gid://shopify/Location/${locations}") {
+                      id
+                      location {
+                        id
+                        name
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  `,
+  variables: {}
+});
+
+    
+
                       var requestOptions = {
                         method: "POST",
                         headers: myHeaders,
@@ -539,7 +713,7 @@ class DefaultSettingController {
                         inventoryItemID
                       );
                       console.log(
-                        "ProductVariantIDProductVariantIDProductVariantID",
+                        "ProductVariantIDProductVariantIDProductVariantID----barcode675",
                         ProductVariantID
                       );
 
@@ -555,7 +729,7 @@ class DefaultSettingController {
                       };
 
                       const updateQqantity = await fetch(
-                        `https://${fetchuser?.dataValues?.shop}/admin/api/2023-10/graphql.json`,
+                        `https://${fetchuser?.dataValues?.shop}/admin/api/2025-10/graphql.json`,
                         requestOptions
                       );
 
@@ -575,7 +749,7 @@ class DefaultSettingController {
                       };
 
                       const updateContinewSeeling = await fetch(
-                        `https://${fetchuser?.dataValues?.shop}/admin/api/2023-10/graphql.json`,
+                        `https://${fetchuser?.dataValues?.shop}/admin/api/2025-10/graphql.json`,
                         requestOptions
                       );
                     }
@@ -652,7 +826,7 @@ class DefaultSettingController {
         redirect: "follow",
       };
       const data = await fetch(
-        `https://${fetchuser.dataValues.shop}/admin/api/2023-10/graphql.json`,
+        `https://${fetchuser.dataValues.shop}/admin/api/2025-10/graphql.json`,
         requestOptions
       );
       const response = await data.text();
@@ -753,7 +927,7 @@ class DefaultSettingController {
         redirect: "follow",
       };
       const data = await fetch(
-        `https://${fetchuser.dataValues.shop}/admin/api/2023-10/graphql.json`,
+        `https://${fetchuser.dataValues.shop}/admin/api/2025-10/graphql.json`,
         requestOptions
       );
       const response = await data.text();
