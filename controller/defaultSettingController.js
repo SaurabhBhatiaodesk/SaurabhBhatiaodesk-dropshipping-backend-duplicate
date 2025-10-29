@@ -357,6 +357,9 @@ class DefaultSettingController {
                     data?.data?.products?.edges[0]?.node?.variants?.edges[0]
                       ?.node?.id;
 
+                      console.log(ProductVariantID,'ProductVariantID----------------')
+
+
                   var graphql = JSON.stringify({
                     query: `mutation MyMutation {\r\n  inventorySetOnHandQuantities(\r\n    input: {\r\n      reason: \"correction\"\r\n      setQuantities: {\r\n        inventoryItemId: \"${inventoryItemID}\"\r\n        locationId: \"gid://shopify/Location/${locations}\"\r\n        quantity: ${plusBufferQuentityCsvQqantity}\r\n      }\r\n    }\r\n  ) {\r\n    userErrors {\r\n      field\r\n      message\r\n    }\r\n  }\r\n}\r\n`,
                     variables: {},
@@ -371,6 +374,70 @@ class DefaultSettingController {
                     `https://${fetchuser.dataValues.shop}/admin/api/2025-10/graphql.json`,
                     requestOptions
                   );
+
+                   // 🟢 1️⃣ Enable tracking before updating quantity
+// 🧩 Step 1️⃣ — Check if tracking is already enabled
+try {
+  const checkTrackingQuery = JSON.stringify({
+    query: `
+      query {
+        inventoryItem(id: "${inventoryItemID}") {
+          id
+          tracked
+          trackedEditable { reason }
+        }
+      }
+    `
+  });
+
+  const checkResponse = await fetch(
+    `https://${fetchuser.dataValues.shop}/admin/api/2025-10/graphql.json`,
+    { method: "POST", headers: myHeaders, body: checkTrackingQuery }
+  );
+
+  const checkData = await checkResponse.json();
+  const tracked = checkData?.data?.inventoryItem?.tracked;
+  const editableReason = checkData?.data?.inventoryItem?.trackedEditable?.reason;
+
+  console.log(`🔍 Checking tracking for ${inventoryItemID}: tracked=${tracked}, editable=${editableReason}`);
+
+  if (!tracked && editableReason === null) {
+    console.log(`⚙️ Enabling tracking for ${inventoryItemID}...`);
+
+    const enableTracking = JSON.stringify({
+      query: `
+        mutation {
+          inventoryItemUpdate(
+            id: "${inventoryItemID}",
+            input: { tracked: true }
+          ) {
+            inventoryItem { id tracked }
+            userErrors { field message }
+          }
+        }
+      `
+    });
+
+    const trackingResponse = await fetch(
+      `https://${fetchuser.dataValues.shop}/admin/api/2025-10/graphql.json`,
+      { method: "POST", headers: myHeaders, body: enableTracking }
+    );
+
+    const trackingData = await trackingResponse.json();
+    if (trackingData?.data?.inventoryItemUpdate?.userErrors?.length) {
+      console.warn(`⚠️ Failed to enable tracking for ${inventoryItemID}:`, trackingData.data.inventoryItemUpdate.userErrors);
+    } else {
+      console.log(`✅ Tracking successfully enabled for ${inventoryItemID}`);
+    }
+  } else if (tracked) {
+    console.log(`✅ Already tracked: ${inventoryItemID}`);
+  } else {
+    console.log(`⚠️ Cannot enable tracking for ${inventoryItemID}. Reason: ${editableReason}`);
+  }
+} catch (err) {
+  console.error(`❌ Tracking check error for ${inventoryItemID}:`, err.message);
+}
+
 
                   // *****************************************************************************************************************//
                   // update inventory Policy
@@ -465,6 +532,7 @@ class DefaultSettingController {
                     "ProductVariantIDProductVariantIDProductVariantID-----barcode-423",
                     ProductVariantID
                   );
+               
 
                   var graphql = JSON.stringify({
                     query: `mutation MyMutation {\r\n  inventorySetOnHandQuantities(\r\n    input: {\r\n      reason: \"correction\"\r\n      setQuantities: {\r\n        inventoryItemId: \"${inventoryItemID}\"\r\n        locationId: \"gid://shopify/Location/${locations}\"\r\n        quantity: ${plusBufferQuentityCsvQqantity}\r\n      }\r\n    }\r\n  ) {\r\n    userErrors {\r\n      field\r\n      message\r\n    }\r\n  }\r\n}\r\n`,
@@ -481,7 +549,71 @@ class DefaultSettingController {
                     `https://${fetchuser?.dataValues?.shop}/admin/api/2025-10/graphql.json`,
                     requestOptions
                   );
-                  console.log(updateQqantity,'updateQqantity--------updateQqantity')
+
+
+                   // 🟢 1️⃣ Enable tracking before updating quantity
+// 🧩 Step 1️⃣ — Check if tracking is already enabled
+try {
+  const checkTrackingQuery = JSON.stringify({
+    query: `
+      query {
+        inventoryItem(id: "${inventoryItemID}") {
+          id
+          tracked
+          trackedEditable { reason }
+        }
+      }
+    `
+  });
+
+  const checkResponse = await fetch(
+    `https://${fetchuser.dataValues.shop}/admin/api/2025-10/graphql.json`,
+    { method: "POST", headers: myHeaders, body: checkTrackingQuery }
+  );
+
+  const checkData = await checkResponse.json();
+  const tracked = checkData?.data?.inventoryItem?.tracked;
+  const editableReason = checkData?.data?.inventoryItem?.trackedEditable?.reason;
+
+  console.log(`🔍 Checking tracking for ${inventoryItemID}: tracked=${tracked}, editable=${editableReason}`);
+
+  if (!tracked && editableReason === null) {
+    console.log(`⚙️ Enabling tracking for ${inventoryItemID}...`);
+
+    const enableTracking = JSON.stringify({
+      query: `
+        mutation {
+          inventoryItemUpdate(
+            id: "${inventoryItemID}",
+            input: { tracked: true }
+          ) {
+            inventoryItem { id tracked }
+            userErrors { field message }
+          }
+        }
+      `
+    });
+
+    const trackingResponse = await fetch(
+      `https://${fetchuser.dataValues.shop}/admin/api/2025-10/graphql.json`,
+      { method: "POST", headers: myHeaders, body: enableTracking }
+    );
+
+    const trackingData = await trackingResponse.json();
+    if (trackingData?.data?.inventoryItemUpdate?.userErrors?.length) {
+      console.warn(`⚠️ Failed to enable tracking for ${inventoryItemID}:`, trackingData.data.inventoryItemUpdate.userErrors);
+    } else {
+      console.log(`✅ Tracking successfully enabled for ${inventoryItemID}`);
+    }
+  } else if (tracked) {
+    console.log(`✅ Already tracked: ${inventoryItemID}`);
+  } else {
+    console.log(`⚠️ Cannot enable tracking for ${inventoryItemID}. Reason: ${editableReason}`);
+  }
+} catch (err) {
+  console.error(`❌ Tracking check error for ${inventoryItemID}:`, err.message);
+}
+
 
                   // *****************************************************************************************************************//
                   // update inventory Policy
@@ -503,6 +635,8 @@ class DefaultSettingController {
                     requestOptions
                   );
                   console.log(updateContinewSeeling,'----------------updateContinewSeeling----------------')
+
+
                 }
               }
             } else {
@@ -600,6 +734,7 @@ class DefaultSettingController {
                         "ProductVariantIDProductVariantIDProductVariantID----sku600",
                         ProductVariantID
                       );
+                      
 
                       var graphql = JSON.stringify({
                         query: `mutation MyMutation {\r\n  inventorySetOnHandQuantities(\r\n    input: {\r\n      reason: \"correction\"\r\n      setQuantities: {\r\n        inventoryItemId: \"${inventoryItemID}\"\r\n        locationId: \"gid://shopify/Location/${locations}\"\r\n        quantity: ${plusBufferQuentityCsvQqantity}\r\n      }\r\n    }\r\n  ) {\r\n    userErrors {\r\n      field\r\n      message\r\n    }\r\n  }\r\n}\r\n`,
@@ -613,12 +748,75 @@ class DefaultSettingController {
                         redirect: "follow",
                       };
 
-                      console.log('----->>>>> requestOptions---',requestOptions)
 
                       const updatedata = await fetch(
                         `https://${fetchuser.dataValues.shop}/admin/api/2023-10/graphql.json`,
                         requestOptions
                       );
+
+                       // 🟢 1️⃣ Enable tracking before updating quantity
+// 🧩 Step 1️⃣ — Check if tracking is already enabled
+try {
+  const checkTrackingQuery = JSON.stringify({
+    query: `
+      query {
+        inventoryItem(id: "${inventoryItemID}") {
+          id
+          tracked
+          trackedEditable { reason }
+        }
+      }
+    `
+  });
+
+  const checkResponse = await fetch(
+    `https://${fetchuser.dataValues.shop}/admin/api/2025-10/graphql.json`,
+    { method: "POST", headers: myHeaders, body: checkTrackingQuery }
+  );
+
+  const checkData = await checkResponse.json();
+  const tracked = checkData?.data?.inventoryItem?.tracked;
+  const editableReason = checkData?.data?.inventoryItem?.trackedEditable?.reason;
+
+  console.log(`🔍 Checking tracking for ${inventoryItemID}: tracked=${tracked}, editable=${editableReason}`);
+
+  if (!tracked && editableReason === null) {
+    console.log(`⚙️ Enabling tracking for ${inventoryItemID}...`);
+
+    const enableTracking = JSON.stringify({
+      query: `
+        mutation {
+          inventoryItemUpdate(
+            id: "${inventoryItemID}",
+            input: { tracked: true }
+          ) {
+            inventoryItem { id tracked }
+            userErrors { field message }
+          }
+        }
+      `
+    });
+
+    const trackingResponse = await fetch(
+      `https://${fetchuser.dataValues.shop}/admin/api/2025-10/graphql.json`,
+      { method: "POST", headers: myHeaders, body: enableTracking }
+    );
+
+    const trackingData = await trackingResponse.json();
+    if (trackingData?.data?.inventoryItemUpdate?.userErrors?.length) {
+      console.warn(`⚠️ Failed to enable tracking for ${inventoryItemID}:`, trackingData.data.inventoryItemUpdate.userErrors);
+    } else {
+      console.log(`✅ Tracking successfully enabled for ${inventoryItemID}`);
+    }
+  } else if (tracked) {
+    console.log(`✅ Already tracked: ${inventoryItemID}`);
+  } else {
+    console.log(`⚠️ Cannot enable tracking for ${inventoryItemID}. Reason: ${editableReason}`);
+  }
+} catch (err) {
+  console.error(`❌ Tracking check error for ${inventoryItemID}:`, err.message);
+}
+
 
                       // *****************************************************************************************************************//
                       // update inventory Policy
@@ -716,7 +914,8 @@ class DefaultSettingController {
                         "ProductVariantIDProductVariantIDProductVariantID----barcode675",
                         ProductVariantID
                       );
-
+               
+             
                       var graphql = JSON.stringify({
                         query: `mutation MyMutation {\r\n  inventorySetOnHandQuantities(\r\n    input: {\r\n      reason: \"correction\"\r\n      setQuantities: {\r\n        inventoryItemId: \"${inventoryItemID}\"\r\n        locationId: \"gid://shopify/Location/${locations}\"\r\n        quantity: ${plusBufferQuentityCsvQqantity}\r\n      }\r\n    }\r\n  ) {\r\n    userErrors {\r\n      field\r\n      message\r\n    }\r\n  }\r\n}\r\n`,
                         variables: {},
@@ -732,6 +931,69 @@ class DefaultSettingController {
                         `https://${fetchuser?.dataValues?.shop}/admin/api/2025-10/graphql.json`,
                         requestOptions
                       );
+
+                       // 🟢 1️⃣ Enable tracking before updating quantity
+// 🧩 Step 1️⃣ — Check if tracking is already enabled
+try {
+  const checkTrackingQuery = JSON.stringify({
+    query: `
+      query {
+        inventoryItem(id: "${inventoryItemID}") {
+          id
+          tracked
+          trackedEditable { reason }
+        }
+      }
+    `
+  });
+
+  const checkResponse = await fetch(
+    `https://${fetchuser.dataValues.shop}/admin/api/2025-10/graphql.json`,
+    { method: "POST", headers: myHeaders, body: checkTrackingQuery }
+  );
+
+  const checkData = await checkResponse.json();
+  const tracked = checkData?.data?.inventoryItem?.tracked;
+  const editableReason = checkData?.data?.inventoryItem?.trackedEditable?.reason;
+
+  console.log(`🔍 Checking tracking for ${inventoryItemID}: tracked=${tracked}, editable=${editableReason}`);
+
+  if (!tracked && editableReason === null) {
+    console.log(`⚙️ Enabling tracking for ${inventoryItemID}...`);
+
+    const enableTracking = JSON.stringify({
+      query: `
+        mutation {
+          inventoryItemUpdate(
+            id: "${inventoryItemID}",
+            input: { tracked: true }
+          ) {
+            inventoryItem { id tracked }
+            userErrors { field message }
+          }
+        }
+      `
+    });
+
+    const trackingResponse = await fetch(
+      `https://${fetchuser.dataValues.shop}/admin/api/2025-10/graphql.json`,
+      { method: "POST", headers: myHeaders, body: enableTracking }
+    );
+
+    const trackingData = await trackingResponse.json();
+    if (trackingData?.data?.inventoryItemUpdate?.userErrors?.length) {
+      console.warn(`⚠️ Failed to enable tracking for ${inventoryItemID}:`, trackingData.data.inventoryItemUpdate.userErrors);
+    } else {
+      console.log(`✅ Tracking successfully enabled for ${inventoryItemID}`);
+    }
+  } else if (tracked) {
+    console.log(`✅ Already tracked: ${inventoryItemID}`);
+  } else {
+    console.log(`⚠️ Cannot enable tracking for ${inventoryItemID}. Reason: ${editableReason}`);
+  }
+} catch (err) {
+  console.error(`❌ Tracking check error for ${inventoryItemID}:`, err.message);
+}
 
                       // *****************************************************************************************************************//
                       // update inventory Policy
@@ -766,6 +1028,134 @@ class DefaultSettingController {
           }
         }
       }
+
+      // 🧩 Step 2️⃣ — Zero out discontinued SKUs
+try {
+  console.log("🔍 Checking for discontinued SKUs...");
+
+  // 1️⃣ Fetch all Shopify SKUs
+  const shopifyProductsQuery = JSON.stringify({
+    query: `
+      {
+        products(first: 250) {
+          edges {
+            node {
+              id
+              title
+              variants(first: 100) {
+                edges {
+                  node {
+                    id
+                    sku
+                    inventoryItem { id }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    `
+  });
+
+  const shopifyResponse = await fetch(
+    `https://${fetchuser.dataValues.shop}/admin/api/2025-10/graphql.json`,
+    { method: "POST", headers: myHeaders, body: shopifyProductsQuery }
+  );
+
+  const shopifyData = await shopifyResponse.json();
+  const shopifySkus =
+    shopifyData?.data?.products?.edges?.flatMap((product) =>
+      product.node.variants.edges
+        .filter((variant) => variant.node.sku)
+        .map((variant) => ({
+          sku: variant.node.sku,
+          inventoryItemId: variant.node.inventoryItem.id,
+        }))
+    ) || [];
+
+  // 2️⃣ Compare with current CSV SKUs
+  const csvSkus = csvFile.map((item) => item[fileHeaders]?.trim());
+  const discontinued = shopifySkus.filter((p) => !csvSkus.includes(p.sku));
+
+  console.log(`📦 Found ${discontinued.length} discontinued SKUs`);
+
+  console.log(discontinued,'-------------discontinued-------<>')
+  // 3️⃣ Loop and zero out
+  for (const item of discontinued) {
+    if (!item.inventoryItemId) continue;
+
+    // ✅ Ensure tracking enabled
+    const checkTrackingQuery = JSON.stringify({
+      query: `
+        query {
+          inventoryItem(id: "${item.inventoryItemId}") {
+            id
+            tracked
+          }
+        }
+      `
+    });
+    const checkRes = await fetch(
+      `https://${fetchuser.dataValues.shop}/admin/api/2025-10/graphql.json`,
+      { method: "POST", headers: myHeaders, body: checkTrackingQuery }
+    );
+    const checkData = await checkRes.json();
+    const tracked = checkData?.data?.inventoryItem?.tracked;
+
+    if (!tracked) {
+      const enableTracking = JSON.stringify({
+        query: `
+          mutation {
+            inventoryItemUpdate(id: "${item.inventoryItemId}", input: { tracked: true }) {
+              inventoryItem { id tracked }
+              userErrors { field message }
+            }
+          }
+        `
+      });
+      await fetch(
+        `https://${fetchuser.dataValues.shop}/admin/api/2025-10/graphql.json`,
+        { method: "POST", headers: myHeaders, body: enableTracking }
+      );
+    }
+
+    // ✅ Set quantity to 0 across all locations
+    for (const loc of alllocations) {
+      console.log(loc,'------------loc------------<>')
+      const zeroOutMutation = JSON.stringify({
+        query: `
+          mutation {
+            inventorySetOnHandQuantities(
+              input: {
+                reason: "correction"
+                setQuantities: {
+                  inventoryItemId: "${item.inventoryItemId}"
+                  locationId: "gid://shopify/Location/${loc}"
+                  quantity: ${0}
+                }
+              }
+            ) {
+              userErrors { field message }
+            }
+          }
+        `
+      });
+
+      await fetch(
+        `https://${fetchuser.dataValues.shop}/admin/api/2025-10/graphql.json`,
+        { method: "POST", headers: myHeaders, body: zeroOutMutation }
+      );
+    }
+
+    console.log(`🧹 Zeroed out SKU: ${item.sku}`);
+  }
+} catch (err) {
+  console.error("❌ Error zeroing out discontinued SKUs:", err.message);
+}
+
+
+      
       if (processingSuccessful) {
         // Return the processedCount in the response with a "success" status
         return res.status(201).json({

@@ -432,7 +432,7 @@ cron.schedule("* * * * *", async () => {
 
       // console.log("formattedDate :", currentFormattedDate);
 
-      allCsvFilesData.forEach((csvFile) => {
+      allCsvFilesData.forEach(async (csvFile) => {
         const expireDate = new Date(csvFile.csvExpire);
 
         // console.log(`csvFile?.csvBufferQuantity ${index} :::`, csvFile?.csvBufferQuantity)
@@ -460,7 +460,7 @@ cron.schedule("* * * * *", async () => {
           // console.log("csvFile ::", csvFile);
 
           // if (csvFile?.shop === )
-          userFilteredData.forEach((user) => {
+          userFilteredData.forEach(async (user) => {
             if (csvFile?.shop === user?.shop) {
               // console.log("usersData.forEach if", user?.accessToken);
               // console.log("csvFile if ::", csvFile?.csvFileData);
@@ -627,6 +627,69 @@ cron.schedule("* * * * *", async () => {
                                   // console.log("user?.accessToken :::", user?.accessToken)
                                   // console.log("productVariantId :::", productVariantId)
                                   // console.log("csvFile?.shop :::", csvFile?.shop)
+
+                                                       // 🟢 1️⃣ Enable tracking before updating quantity
+                                  // 🧩 Step 1️⃣ — Check if tracking is already enabled
+try {
+  const checkTrackingQuery = JSON.stringify({
+    query: `
+      query {
+        inventoryItem(id: "${inventoryItemId}") {
+          id
+          tracked
+          trackedEditable { reason }
+        }
+      }
+    `
+  });
+
+  const checkResponse = await fetch(
+    `https://${csvFile?.shop}/admin/api/2025-10/graphql.json`,
+    { method: "POST", headers: myHeaders, body: checkTrackingQuery }
+  );
+
+  const checkData = await checkResponse.json();
+  const tracked = checkData?.data?.inventoryItem?.tracked;
+  const editableReason = checkData?.data?.inventoryItem?.trackedEditable?.reason;
+
+  console.log(`🔍 Checking tracking for ${inventoryItemId}: tracked=${tracked}, editable=${editableReason}`);
+
+  if (!tracked && editableReason === null) {
+    console.log(`⚙️ Enabling tracking for ${inventoryItemId}...`);
+
+    const enableTracking = JSON.stringify({
+      query: `
+        mutation {
+          inventoryItemUpdate(
+            id: "${inventoryItemId}",
+            input: { tracked: true }
+          ) {
+            inventoryItem { id tracked }
+            userErrors { field message }
+          }
+        }
+      `
+    });
+
+    const trackingResponse = await fetch(
+      `https://${csvFile?.shop}/admin/api/2025-10/graphql.json`,
+      { method: "POST", headers: myHeaders, body: enableTracking }
+    );
+
+    const trackingData = await trackingResponse.json();
+    if (trackingData?.data?.inventoryItemUpdate?.userErrors?.length) {
+      console.warn(`⚠️ Failed to enable tracking for ${inventoryItemId}:`, trackingData.data.inventoryItemUpdate.userErrors);
+    } else {
+      console.log(`✅ Tracking successfully enabled for ${inventoryItemId}`);
+    }
+  } else if (tracked) {
+    console.log(`✅ Already tracked: ${inventoryItemId}`);
+  } else {
+    console.log(`⚠️ Cannot enable tracking for ${inventoryItemId}. Reason: ${editableReason}`);
+  }
+} catch (err) {
+  console.error(`❌ Tracking check error for ${inventoryItemId}:`, err.message);
+}
 
                                   let calculatedInventoryQuantity = 0;
 
@@ -834,12 +897,155 @@ cron.schedule("* * * * *", async () => {
                   })
                   .catch((error) => console.log("error", error));
               });
+                     // 🧩 Inside your cron forEach (per shop)
+     // 🧩 Step 2️⃣ — Zero out discontinued SKUs
+try {
+  console.log("🔍 Checking for discontinued SKUs...");
+
+  // 1️⃣ Fetch all Shopify SKUs
+  const shopifyProductsQuery = JSON.stringify({
+    query: `
+      {
+        products(first: 250) {
+          edges {
+            node {
+              id
+              title
+              variants(first: 100) {
+                edges {
+                  node {
+                    id
+                    sku
+                    inventoryItem { id }
+                  }
+                }
+              }
             }
+          }
+        }
+      }
+    `
+  });
+     var myHeaders = new Headers();
+                                  myHeaders.append(
+                                    "X-Shopify-Access-Token",
+                                 
+                                    `${user?.accessToken}`
+                                  );
+                                  myHeaders.append(
+                                    "Content-Type",
+                                    "application/json"
+                                  );
+
+  const shopifyResponse = await fetch(
+    `https://${csvFile?.shop}/admin/api/2025-10/graphql.json`,
+    { method: "POST", headers: myHeaders, body: shopifyProductsQuery }
+  );
+
+  const shopifyData = await shopifyResponse.json();
+  const shopifySkus =
+    shopifyData?.data?.products?.edges?.flatMap((product) =>
+      product.node.variants.edges
+        .filter((variant) => variant.node.sku)
+        .map((variant) => ({
+          sku: variant.node.sku,
+          inventoryItemId: variant.node.inventoryItem.id,
+        }))
+    ) || [];
+
+  // 2️⃣ Compare with current CSV SKUs
+  const csvSkus = csvFile.map((item) => item[fileHeaders]?.trim());
+  const discontinued = shopifySkus.filter((p) => !csvSkus.includes(p.sku));
+
+  console.log(`📦 Found ${discontinued.length} discontinued SKUs`);
+
+  console.log(discontinued,'-------------discontinued-------<>')
+  // 3️⃣ Loop and zero out
+  for (const item of discontinued) {
+    if (!item.inventoryItemId) continue;
+
+    // ✅ Ensure tracking enabled
+    const checkTrackingQuery = JSON.stringify({
+      query: `
+        query {
+          inventoryItem(id: "${item.inventoryItemId}") {
+            id
+            tracked
+          }
+        }
+      `
+    });
+    const checkRes = await fetch(
+      `https://${csvFile?.shop}/admin/api/2025-10/graphql.json`,
+      { method: "POST", headers: myHeaders, body: checkTrackingQuery }
+    );
+    const checkData = await checkRes.json();
+    const tracked = checkData?.data?.inventoryItem?.tracked;
+
+    if (!tracked) {
+      const enableTracking = JSON.stringify({
+        query: `
+          mutation {
+            inventoryItemUpdate(id: "${item.inventoryItemId}", input: { tracked: true }) {
+              inventoryItem { id tracked }
+              userErrors { field message }
+            }
+          }
+        `
+      });
+      await fetch(
+        `https://${csvFile?.shop}/admin/api/2025-10/graphql.json`,
+        { method: "POST", headers: myHeaders, body: enableTracking }
+      );
+    }
+
+    // ✅ Set quantity to 0 across all locations
+    for (const loc of alllocations) {
+      console.log(loc,'------------loc------------<>')
+      const zeroOutMutation = JSON.stringify({
+        query: `
+          mutation {
+            inventorySetOnHandQuantities(
+              input: {
+                reason: "correction"
+                setQuantities: {
+                  inventoryItemId: "${item.inventoryItemId}"
+                  locationId: "gid://shopify/Location/${loc}"
+                  quantity: ${0}
+                }
+              }
+            ) {
+              userErrors { field message }
+            }
+          }
+        `
+      });
+
+      await fetch(
+        `https://${csvFile?.shop}/admin/api/2025-10/graphql.json`,
+        { method: "POST", headers: myHeaders, body: zeroOutMutation }
+      );
+    }
+
+    console.log(`🧹 Zeroed out SKU: ${item.sku}`);
+  }
+} catch (err) {
+  console.error("❌ Error zeroing out discontinued SKUs:", err.message);
+}
+
+            }
+      
           });
+
+          
         } else {
           // console.log("Not matched else");
         }
       });
+
+
+
+
     } catch (error) {
       console.error("Error fetching CSV files:", error);
     }
