@@ -1029,7 +1029,7 @@ try {
         }
       }
 
-      // 🧩 Step 2️⃣ — Zero out discontinued SKUs
+      //  Step 2— Zero out discontinued SKUs
 try {
   console.log("🔍 Checking for discontinued SKUs...");
 
@@ -1151,7 +1151,7 @@ try {
     console.log(`🧹 Zeroed out SKU: ${item.sku}`);
   }
 } catch (err) {
-  console.error("❌ Error zeroing out discontinued SKUs:", err.message);
+  console.error("Error zeroing out discontinued SKUs:", err.message);
 }
 
 
