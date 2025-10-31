@@ -112,8 +112,6 @@ class DefaultSettingController {
       let foundMatch = false;
       const tagToFind = tags.toLowerCase();
       for (const item of parseData?.data?.shop?.productTags?.edges) {
-        console.log(item,'--------------item---------------<>')
-        console.log(item?.node,'--------------item---------------node----------------<>')
         const itemTag = item.node.toLowerCase(); // Convert the tag from the data to lowercase
 
         console.log("itemTag", itemTag);
@@ -357,8 +355,6 @@ class DefaultSettingController {
                     data?.data?.products?.edges[0]?.node?.variants?.edges[0]
                       ?.node?.id;
 
-                      console.log(ProductVariantID,'ProductVariantID----------------')
-
 
                   var graphql = JSON.stringify({
                     query: `mutation MyMutation {\r\n  inventorySetOnHandQuantities(\r\n    input: {\r\n      reason: \"correction\"\r\n      setQuantities: {\r\n        inventoryItemId: \"${inventoryItemID}\"\r\n        locationId: \"gid://shopify/Location/${locations}\"\r\n        quantity: ${plusBufferQuentityCsvQqantity}\r\n      }\r\n    }\r\n  ) {\r\n    userErrors {\r\n      field\r\n      message\r\n    }\r\n  }\r\n}\r\n`,
@@ -443,7 +439,6 @@ try {
                   // update inventory Policy
                   // *****************************************************************************************************************//
 
-                  console.log(continueSell,'----------continueSell')
                   var graphql = JSON.stringify({
                     query: `mutation MyMutation {\r\n  productVariantUpdate(input: {id: \"${ProductVariantID}\", inventoryPolicy: ${continueSell}}) {\r\n    product {\r\n      id\r\n    }\r\n  }\r\n}\r\n`,
                     variables: {},
@@ -516,7 +511,6 @@ try {
                     requestOptions
                   );
                   const responseItemID = await itemidGet.text();
-                  console.log(responseItemID,'-----------responseItemID---------')
                   const data = JSON.parse(responseItemID);
 
                   const inventoryItemID =
