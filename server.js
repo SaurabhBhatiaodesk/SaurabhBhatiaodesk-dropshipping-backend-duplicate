@@ -238,7 +238,7 @@ app.get("/api/auth/callback", async (req, res) => {
         );
 
         const shopRequestURL =
-          "https://" + shop + "/admin/api/2025-10/shop.json";
+          "https://" + shop + "/admin/api/2023-10/shop.json";
         const shopRequestHeaders = { "X-Shopify-Access-Token": accessToken };
 
         console.log("Shop Req URL: ", shopRequestURL);
@@ -466,7 +466,6 @@ cron.schedule("* * * * *", async () => {
               // console.log("csvFile if ::", csvFile?.csvFileData);
 
               csvFile?.csvFileData.forEach(async (sku) => {
-                // return true
                 // ****************************************************************************************************************************************
                 // fetch locations of store starts
                 // ****************************************************************************************************************************************
