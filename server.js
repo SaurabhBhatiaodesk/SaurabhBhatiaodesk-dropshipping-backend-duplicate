@@ -238,7 +238,7 @@ app.get("/api/auth/callback", async (req, res) => {
         );
 
         const shopRequestURL =
-          "https://" + shop + "/admin/api/2023-10/shop.json";
+          "https://" + shop + "/admin/api/2025-10/shop.json";
         const shopRequestHeaders = { "X-Shopify-Access-Token": accessToken };
 
         console.log("Shop Req URL: ", shopRequestURL);
@@ -466,7 +466,6 @@ cron.schedule("* * * * *", async () => {
               // console.log("csvFile if ::", csvFile?.csvFileData);
 
               csvFile?.csvFileData.forEach(async (sku) => {
-                // console.log(sku,'------------------sku------------------????')
                 // return true
                 // ****************************************************************************************************************************************
                 // fetch locations of store starts
@@ -513,8 +512,8 @@ cron.schedule("* * * * *", async () => {
                         // Print or use the location ID as needed (My Custom Location)
                         // console.log(`locationId :::::`, locationId);
                         // console.log(`nodeArray :::::`, nodeArray);
-                        // console.log(`sku?.SKU ${index} :::::`, sku?.SKU);
-
+                       const skuCode = sku?.SKU || sku?.['Variant SKU']
+                       console.log(skuCode,'----------------skuCode')
                         // new code starts
                         // ****************************************************************************************************************************************
                         // fetch products of store starts
@@ -530,7 +529,7 @@ cron.schedule("* * * * *", async () => {
 
                       var graphql = JSON.stringify({
   query: `{
-    products(first: 1, query: "sku:${sku?.SKU}}") {
+    products(first: 1, query: "sku:${skuCode}") {
       edges {
         node {
           id
@@ -581,20 +580,20 @@ cron.schedule("* * * * *", async () => {
                           // .then((result) => console.log("JSON.parse :::", result))
 
                           .then((result) => {
-                            console.log("JSON.parse :::", JSON.parse(result))
+                            // console.log("JSON.parse :::", JSON.parse(result))
                             skuMatchedProducts.push(JSON.parse(result));
                             console.log("skuMatchedProducts :::", skuMatchedProducts)
 
                             skuMatchedProducts.forEach((data) => {
                               const edgesArray =
                                 data?.data?.products?.edges || [];
-                              console.log(`edgesArray ${index} :::`, edgesArray);
+                              // console.log(`edgesArray ${index} :::`, edgesArray);
 
                               edgesArray.forEach((edge) => {
                                 // Check if node and variants exist
                                 const nodeArray =
                                   edge?.node?.variants?.edges || [];
-                                console.log(`nodeArrayeeee :::`, nodeArray);
+                                // console.log(`nodeArrayeeee :::`, nodeArray);
                                 nodeArray.forEach(async (node, index) => {
                                   console.log(
                                     `node?.node?.id ${index} ::`,
@@ -704,6 +703,8 @@ try {
                                       "calculatedInventoryQuantity if 20 > 10 :::",
                                       calculatedInventoryQuantity
                                     );
+                                    console.log(productInventoryQuantity,'------productInventoryQuantity---if 20 > 10')
+                                    console.log(csvFile?.csvBufferQuantity,'------csvFile?.csvBufferQuantity---if 20 > 10')
                                   } else if (
                                     productInventoryQuantity <
                                     csvFile?.csvBufferQuantity
@@ -713,6 +714,8 @@ try {
                                       "calculatedInventoryQuantity else if 10 < 20 :::",
                                       calculatedInventoryQuantity
                                     );
+                                    console.log(productInventoryQuantity,'------productInventoryQuantity----else if 10 < 20')
+                                    console.log(csvFile?.csvBufferQuantity,'------csvFile?.csvBufferQuantity---else if 10 < 20')
 
                                     // *****************************************************************************************************************//
                                     // update inventory Policy starts
@@ -728,10 +731,17 @@ try {
                                       "application/json"
                                     );
 
-                                    var graphql = JSON.stringify({
-                                      query: `mutation MyMutation {\r\n  productVariantUpdate(input: { id: \"${productVariantId}\", inventoryPolicy: DENY }) {\r\n    product {\r\n      id\r\n    }\r\n  }\r\n}\r\n`,
-                                      variables: {},
-                                    });
+                                    console.log(productVariantId,'------------productVariantId---735')
+                                    console.log(inventoryPolicy,'------------inventoryPolicy---735')
+                                    // var graphql = JSON.stringify({
+                                    //   query: `mutation MyMutation {\r\n  productVariantUpdate(input: { id: \"${productVariantId}\", inventoryPolicy: deny }) {\r\n    product {\r\n      id\r\n    }\r\n  }\r\n}\r\n`,
+                                    //   variables: {},
+                                    // });
+
+                                            var graphql = JSON.stringify({
+                        query: `mutation MyMutation {\r\n  productVariantUpdate(input: {id: \"${productVariantId}\", inventoryPolicy: DENY}) {\r\n    product {\r\n      id\r\n    }\r\n  }\r\n}\r\n`,
+                        variables: {},
+                      });
                                     var requestOptions = {
                                       method: "POST",
                                       headers: myHeaders,
@@ -782,10 +792,17 @@ try {
                                       "application/json"
                                     );
 
-                                    var graphql = JSON.stringify({
-                                      query: `mutation MyMutation {\r\n  productVariantUpdate(input: { id: \"${productVariantId}\", inventoryPolicy: DENY }) {\r\n    product {\r\n      id\r\n    }\r\n  }\r\n}\r\n`,
-                                      variables: {},
-                                    });
+                                    // var graphql = JSON.stringify({
+                                    //   query: `mutation MyMutation {\r\n  productVariantUpdate(input: { id: \"${productVariantId}\", inventoryPolicy: deny }) {\r\n    product {\r\n      id\r\n    }\r\n  }\r\n}\r\n`,
+                                    //   variables: {},
+                                    // });
+                                    console.log(productVariantId,'------------productVariantId---799')
+                                    console.log(csvFile?.shop,'------------csvFile?.shop---799')
+
+                                     var graphql = JSON.stringify({
+                        query: `mutation MyMutation {\r\n  productVariantUpdate(input: {id: \"${productVariantId}\", inventoryPolicy: DENY}) {\r\n    product {\r\n      id\r\n    }\r\n  }\r\n}\r\n`,
+                        variables: {},
+                      });
                                     var requestOptions = {
                                       method: "POST",
                                       headers: myHeaders,
@@ -859,15 +876,15 @@ try {
                                   let updatedQuantityResponse = null;
 
                                   await fetch(
-                                    `https://${csvFile?.shop}/admin/api/2023-10/graphql.json`,
+                                    `https://${csvFile?.shop}/admin/api/2025-10/graphql.json`,
                                     requestOptions
                                   )
                                     .then((response) => response.text())
                                     .then((result) => {
-                                      console.log(
-                                        "product quantity update successfull :::",
-                                        JSON.parse(result)
-                                      );
+                                      // console.log(
+                                      //   "product quantity update successfull :::",
+                                      //   JSON.parse(result)
+                                      // );
                                       updatedQuantityResponse =
                                         JSON.parse(result);
                                       // console.log(
@@ -899,139 +916,139 @@ try {
               });
                      // 🧩 Inside your cron forEach (per shop)
      // 🧩 Step 2️⃣ — Zero out discontinued SKUs
-try {
-  console.log("🔍 Checking for discontinued SKUs...");
+// try {
+//   console.log("🔍 Checking for discontinued SKUs...");
 
-  // 1️⃣ Fetch all Shopify SKUs
-  const shopifyProductsQuery = JSON.stringify({
-    query: `
-      {
-        products(first: 250) {
-          edges {
-            node {
-              id
-              title
-              variants(first: 100) {
-                edges {
-                  node {
-                    id
-                    sku
-                    inventoryItem { id }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    `
-  });
-     var myHeaders = new Headers();
-                                  myHeaders.append(
-                                    "X-Shopify-Access-Token",
+//   // 1️⃣ Fetch all Shopify SKUs
+//   const shopifyProductsQuery = JSON.stringify({
+//     query: `
+//       {
+//         products(first: 250) {
+//           edges {
+//             node {
+//               id
+//               title
+//               variants(first: 100) {
+//                 edges {
+//                   node {
+//                     id
+//                     sku
+//                     inventoryItem { id }
+//                   }
+//                 }
+//               }
+//             }
+//           }
+//         }
+//       }
+//     `
+//   });
+//      var myHeaders = new Headers();
+//                                   myHeaders.append(
+//                                     "X-Shopify-Access-Token",
                                  
-                                    `${user?.accessToken}`
-                                  );
-                                  myHeaders.append(
-                                    "Content-Type",
-                                    "application/json"
-                                  );
+//                                     `${user?.accessToken}`
+//                                   );
+//                                   myHeaders.append(
+//                                     "Content-Type",
+//                                     "application/json"
+//                                   );
 
-  const shopifyResponse = await fetch(
-    `https://${csvFile?.shop}/admin/api/2025-10/graphql.json`,
-    { method: "POST", headers: myHeaders, body: shopifyProductsQuery }
-  );
+//   const shopifyResponse = await fetch(
+//     `https://${csvFile?.shop}/admin/api/2025-10/graphql.json`,
+//     { method: "POST", headers: myHeaders, body: shopifyProductsQuery }
+//   );
 
-  const shopifyData = await shopifyResponse.json();
-  const shopifySkus =
-    shopifyData?.data?.products?.edges?.flatMap((product) =>
-      product.node.variants.edges
-        .filter((variant) => variant.node.sku)
-        .map((variant) => ({
-          sku: variant.node.sku,
-          inventoryItemId: variant.node.inventoryItem.id,
-        }))
-    ) || [];
+//   const shopifyData = await shopifyResponse.json();
+//   const shopifySkus =
+//     shopifyData?.data?.products?.edges?.flatMap((product) =>
+//       product.node.variants.edges
+//         .filter((variant) => variant.node.sku)
+//         .map((variant) => ({
+//           sku: variant.node.sku,
+//           inventoryItemId: variant.node.inventoryItem.id,
+//         }))
+//     ) || [];
 
-  // 2️⃣ Compare with current CSV SKUs
-  const csvSkus = csvFile.map((item) => item[fileHeaders]?.trim());
-  const discontinued = shopifySkus.filter((p) => !csvSkus.includes(p.sku));
+//   // 2️⃣ Compare with current CSV SKUs
+//   const csvSkus = csvFile.map((item) => item[fileHeaders]?.trim());
+//   const discontinued = shopifySkus.filter((p) => !csvSkus.includes(p.sku));
 
-  console.log(`📦 Found ${discontinued.length} discontinued SKUs`);
+//   console.log(`📦 Found ${discontinued.length} discontinued SKUs`);
 
-  console.log(discontinued,'-------------discontinued-------<>')
-  // 3️⃣ Loop and zero out
-  for (const item of discontinued) {
-    if (!item.inventoryItemId) continue;
+//   console.log(discontinued,'-------------discontinued-------<>')
+//   // 3️⃣ Loop and zero out
+//   for (const item of discontinued) {
+//     if (!item.inventoryItemId) continue;
 
-    // ✅ Ensure tracking enabled
-    const checkTrackingQuery = JSON.stringify({
-      query: `
-        query {
-          inventoryItem(id: "${item.inventoryItemId}") {
-            id
-            tracked
-          }
-        }
-      `
-    });
-    const checkRes = await fetch(
-      `https://${csvFile?.shop}/admin/api/2025-10/graphql.json`,
-      { method: "POST", headers: myHeaders, body: checkTrackingQuery }
-    );
-    const checkData = await checkRes.json();
-    const tracked = checkData?.data?.inventoryItem?.tracked;
+//     // ✅ Ensure tracking enabled
+//     const checkTrackingQuery = JSON.stringify({
+//       query: `
+//         query {
+//           inventoryItem(id: "${item.inventoryItemId}") {
+//             id
+//             tracked
+//           }
+//         }
+//       `
+//     });
+//     const checkRes = await fetch(
+//       `https://${csvFile?.shop}/admin/api/2025-10/graphql.json`,
+//       { method: "POST", headers: myHeaders, body: checkTrackingQuery }
+//     );
+//     const checkData = await checkRes.json();
+//     const tracked = checkData?.data?.inventoryItem?.tracked;
 
-    if (!tracked) {
-      const enableTracking = JSON.stringify({
-        query: `
-          mutation {
-            inventoryItemUpdate(id: "${item.inventoryItemId}", input: { tracked: true }) {
-              inventoryItem { id tracked }
-              userErrors { field message }
-            }
-          }
-        `
-      });
-      await fetch(
-        `https://${csvFile?.shop}/admin/api/2025-10/graphql.json`,
-        { method: "POST", headers: myHeaders, body: enableTracking }
-      );
-    }
+//     if (!tracked) {
+//       const enableTracking = JSON.stringify({
+//         query: `
+//           mutation {
+//             inventoryItemUpdate(id: "${item.inventoryItemId}", input: { tracked: true }) {
+//               inventoryItem { id tracked }
+//               userErrors { field message }
+//             }
+//           }
+//         `
+//       });
+//       await fetch(
+//         `https://${csvFile?.shop}/admin/api/2025-10/graphql.json`,
+//         { method: "POST", headers: myHeaders, body: enableTracking }
+//       );
+//     }
 
-    // ✅ Set quantity to 0 across all locations
-    for (const loc of alllocations) {
-      console.log(loc,'------------loc------------<>')
-      const zeroOutMutation = JSON.stringify({
-        query: `
-          mutation {
-            inventorySetOnHandQuantities(
-              input: {
-                reason: "correction"
-                setQuantities: {
-                  inventoryItemId: "${item.inventoryItemId}"
-                  locationId: "gid://shopify/Location/${loc}"
-                  quantity: ${0}
-                }
-              }
-            ) {
-              userErrors { field message }
-            }
-          }
-        `
-      });
+//     // ✅ Set quantity to 0 across all locations
+//     for (const loc of alllocations) {
+//       console.log(loc,'------------loc------------<>')
+//       const zeroOutMutation = JSON.stringify({
+//         query: `
+//           mutation {
+//             inventorySetOnHandQuantities(
+//               input: {
+//                 reason: "correction"
+//                 setQuantities: {
+//                   inventoryItemId: "${item.inventoryItemId}"
+//                   locationId: "gid://shopify/Location/${loc}"
+//                   quantity: ${0}
+//                 }
+//               }
+//             ) {
+//               userErrors { field message }
+//             }
+//           }
+//         `
+//       });
 
-      await fetch(
-        `https://${csvFile?.shop}/admin/api/2025-10/graphql.json`,
-        { method: "POST", headers: myHeaders, body: zeroOutMutation }
-      );
-    }
+//       await fetch(
+//         `https://${csvFile?.shop}/admin/api/2025-10/graphql.json`,
+//         { method: "POST", headers: myHeaders, body: zeroOutMutation }
+//       );
+//     }
 
-    console.log(`🧹 Zeroed out SKU: ${item.sku}`);
-  }
-} catch (err) {
-  console.error("❌ Error zeroing out discontinued SKUs:", err.message);
-}
+//     console.log(`🧹 Zeroed out SKU: ${item.sku}`);
+//   }
+// } catch (err) {
+//   console.error("❌ Error zeroing out discontinued SKUs:", err.message);
+// }
 
             }
       

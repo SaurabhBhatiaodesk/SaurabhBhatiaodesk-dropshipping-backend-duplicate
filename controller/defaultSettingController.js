@@ -165,6 +165,8 @@ class DefaultSettingController {
         myHeaders
       );
 
+      console.log(req.body,'-------------------------------req.body')
+
       const {
         csvFileData,
         defaultSetting,
@@ -442,6 +444,8 @@ try {
                   // *****************************************************************************************************************//
                   // update inventory Policy
                   // *****************************************************************************************************************//
+
+                  console.log(continueSell,'----------continueSell')
                   var graphql = JSON.stringify({
                     query: `mutation MyMutation {\r\n  productVariantUpdate(input: {id: \"${ProductVariantID}\", inventoryPolicy: ${continueSell}}) {\r\n    product {\r\n      id\r\n    }\r\n  }\r\n}\r\n`,
                     variables: {},
@@ -454,7 +458,7 @@ try {
                   };
 
                   const updateContinewSeeling = await fetch(
-                    `https://${fetchuser.dataValues.shop}/admin/api/2025-10/graphql.json`,
+                    `https://${fetchuser.dataValues.shop}/admin/api/2023-10/graphql.json`,
                     requestOptions
                   );
                 } else if (lowercaseshopifyInventoryHeaders == "barcode") {
@@ -631,7 +635,7 @@ try {
                   };
 
                   const updateContinewSeeling = await fetch(
-                    `https://${fetchuser?.dataValues?.shop}/admin/api/2025-10/graphql.json`,
+                    `https://${fetchuser?.dataValues?.shop}/admin/api/2023-10/graphql.json`,
                     requestOptions
                   );
                   console.log(updateContinewSeeling,'----------------updateContinewSeeling----------------')
@@ -750,7 +754,7 @@ try {
 
 
                       const updatedata = await fetch(
-                        `https://${fetchuser.dataValues.shop}/admin/api/2023-10/graphql.json`,
+                        `https://${fetchuser.dataValues.shop}/admin/api/2025-10/graphql.json`,
                         requestOptions
                       );
 
@@ -834,7 +838,7 @@ try {
                       };
 
                       const updateContinewSeeling = await fetch(
-                        `https://${fetchuser.dataValues.shop}/admin/api/2025-10/graphql.json`,
+                        `https://${fetchuser.dataValues.shop}/admin/api/2023-10/graphql.json`,
                         requestOptions
                       );
                       console.log(updateContinewSeeling,'------------updateContinewSeeling---------641')
@@ -893,7 +897,7 @@ try {
                         redirect: "follow",
                       };
                       const itemidGet = await fetch(
-                        `https://${fetchuser.dataValues.shop}/admin/api/2023-10/graphql.json`,
+                        `https://${fetchuser.dataValues.shop}/admin/api/2025-10/graphql.json`,
                         requestOptions
                       );
                       const responseItemID = await itemidGet.text();
@@ -1011,7 +1015,7 @@ try {
                       };
 
                       const updateContinewSeeling = await fetch(
-                        `https://${fetchuser?.dataValues?.shop}/admin/api/2025-10/graphql.json`,
+                        `https://${fetchuser?.dataValues?.shop}/admin/api/2023-10/graphql.json`,
                         requestOptions
                       );
                     }
@@ -1029,130 +1033,154 @@ try {
         }
       }
 
-      //  Step 2— Zero out discontinued SKUs
-try {
-  console.log("🔍 Checking for discontinued SKUs...");
+//  Step 2 — Zero out discontinued SKUs (Full, Safe, Paginated)
+// try {
+//   console.log("🔍 Starting discontinued SKU check...");
 
-  // 1️⃣ Fetch all Shopify SKUs
-  const shopifyProductsQuery = JSON.stringify({
-    query: `
-      {
-        products(first: 250) {
-          edges {
-            node {
-              id
-              title
-              variants(first: 100) {
-                edges {
-                  node {
-                    id
-                    sku
-                    inventoryItem { id }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    `
-  });
+//   // 🧩 Helper: Fetch all Shopify products with pagination
+//   async function fetchAllShopifyProducts(shopDomain, headers) {
+//     let hasNextPage = true;
+//     let cursor = null;
+//     let allProducts = [];
+//     let pageCount = 0;
 
-  const shopifyResponse = await fetch(
-    `https://${fetchuser.dataValues.shop}/admin/api/2025-10/graphql.json`,
-    { method: "POST", headers: myHeaders, body: shopifyProductsQuery }
-  );
+//     while (hasNextPage) {
+//       const query = JSON.stringify({
+//         query: `
+//           {
+//             products(first: 250${cursor ? `, after: "${cursor}"` : ""}) {
+//               edges {
+//                 cursor
+//                 node {
+//                   id
+//                   title
+//                   variants(first: 100) {
+//                     edges {
+//                       node {
+//                         id
+//                         sku
+//                         inventoryItem { id }
+//                       }
+//                     }
+//                   }
+//                 }
+//               }
+//               pageInfo { hasNextPage endCursor }
+//             }
+//           }
+//         `
+//       });
 
-  const shopifyData = await shopifyResponse.json();
-  const shopifySkus =
-    shopifyData?.data?.products?.edges?.flatMap((product) =>
-      product.node.variants.edges
-        .filter((variant) => variant.node.sku)
-        .map((variant) => ({
-          sku: variant.node.sku,
-          inventoryItemId: variant.node.inventoryItem.id,
-        }))
-    ) || [];
+//       const response = await fetch(
+//         `https://${shopDomain}/admin/api/2025-10/graphql.json`,
+//         { method: "POST", headers, body: query }
+//       );
 
-  // 2️⃣ Compare with current CSV SKUs
-  const csvSkus = csvFile.map((item) => item[fileHeaders]?.trim());
-  const discontinued = shopifySkus.filter((p) => !csvSkus.includes(p.sku));
+//       const data = await response.json();
+//       const products = data?.data?.products?.edges || [];
 
-  console.log(`📦 Found ${discontinued.length} discontinued SKUs`);
+//       allProducts.push(...products);
+//       pageCount++;
+//       console.log(`📦 Page ${pageCount}: fetched ${products.length} products (total ${allProducts.length})`);
 
-  console.log(discontinued,'-------------discontinued-------<>')
-  // 3️⃣ Loop and zero out
-  for (const item of discontinued) {
-    if (!item.inventoryItemId) continue;
+//       hasNextPage = data?.data?.products?.pageInfo?.hasNextPage;
+//       cursor = data?.data?.products?.pageInfo?.endCursor;
 
-    // ✅ Ensure tracking enabled
-    const checkTrackingQuery = JSON.stringify({
-      query: `
-        query {
-          inventoryItem(id: "${item.inventoryItemId}") {
-            id
-            tracked
-          }
-        }
-      `
-    });
-    const checkRes = await fetch(
-      `https://${fetchuser.dataValues.shop}/admin/api/2025-10/graphql.json`,
-      { method: "POST", headers: myHeaders, body: checkTrackingQuery }
-    );
-    const checkData = await checkRes.json();
-    const tracked = checkData?.data?.inventoryItem?.tracked;
+//       // Avoid hitting Shopify API rate limit
+//       await new Promise((r) => setTimeout(r, 500));
+//     }
 
-    if (!tracked) {
-      const enableTracking = JSON.stringify({
-        query: `
-          mutation {
-            inventoryItemUpdate(id: "${item.inventoryItemId}", input: { tracked: true }) {
-              inventoryItem { id tracked }
-              userErrors { field message }
-            }
-          }
-        `
-      });
-      await fetch(
-        `https://${fetchuser.dataValues.shop}/admin/api/2025-10/graphql.json`,
-        { method: "POST", headers: myHeaders, body: enableTracking }
-      );
-    }
+//     console.log(`✅ Completed fetching ${allProducts.length} products from Shopify`);
+//     return allProducts;
+//   }
 
-    // ✅ Set quantity to 0 across all locations
-    for (const loc of alllocations) {
-      console.log(loc,'------------loc------------<>')
-      const zeroOutMutation = JSON.stringify({
-        query: `
-          mutation {
-            inventorySetOnHandQuantities(
-              input: {
-                reason: "correction"
-                setQuantities: {
-                  inventoryItemId: "${item.inventoryItemId}"
-                  locationId: "gid://shopify/Location/${loc}"
-                  quantity: ${0}
-                }
-              }
-            ) {
-              userErrors { field message }
-            }
-          }
-        `
-      });
+//   // 🧩 Helper: Chunk an array
+//   function chunkArray(arr, size) {
+//     const result = [];
+//     for (let i = 0; i < arr.length; i += size) result.push(arr.slice(i, i + size));
+//     return result;
+//   }
 
-      await fetch(
-        `https://${fetchuser.dataValues.shop}/admin/api/2025-10/graphql.json`,
-        { method: "POST", headers: myHeaders, body: zeroOutMutation }
-      );
-    }
+//   // 🧩 Step 1 — Fetch all Shopify SKUs (with pagination)
+//   const allProducts = await fetchAllShopifyProducts(fetchuser.dataValues.shop, myHeaders);
+//   const shopifySkus = allProducts.flatMap((p) =>
+//     p.node.variants.edges.map((v) => ({
+//       sku: v.node.sku ? v.node.sku.trim().toLowerCase() : null,
+//       inventoryItemId: v.node.inventoryItem?.id,
+//     }))
+//   );
 
-    console.log(`🧹 Zeroed out SKU: ${item.sku}`);
-  }
-} catch (err) {
-  console.error("Error zeroing out discontinued SKUs:", err.message);
-}
+//   // 🧩 Step 2 — Prepare CSV SKU set
+//   const csvSkus = new Set(
+//     csvFile
+//       .map((i) => i[fileHeaders]?.trim().toLowerCase())
+//       .filter(Boolean) // drop null / empty
+//   );
+
+//   // 🧩 Step 3 — Find discontinued (missing or null SKU)
+//   const discontinued = shopifySkus.filter(
+//     (p) => !p.sku || !csvSkus.has(p.sku)
+//   );
+
+//   console.log(`📉 Found ${discontinued.length} discontinued SKUs (to be zeroed out)`);
+
+//   if (discontinued.length === 0) {
+//     console.log("✅ No discontinued SKUs found — all in sync");
+//     return;
+//   }
+
+//   // 🧩 Step 4 — Zero out discontinued SKUs in batches
+//   const batchSize = 40;
+//   const chunks = chunkArray(discontinued, batchSize);
+
+//   for (let index = 0; index < chunks.length; index++) {
+//     const batch = chunks[index];
+//     console.log(`🧹 Zeroing batch ${index + 1}/${chunks.length} (${batch.length} SKUs)...`);
+
+//     // Build multiple mutations in one GraphQL call
+//     const mutationQuery = batch
+//       .filter((item) => item.inventoryItemId)
+//       .map(
+//         (item, idx) => `
+//           op${idx}: inventorySetOnHandQuantities(
+//             input: {
+//               reason: "correction"
+//               setQuantities: [${alllocations
+//                 .map(
+//                   (loc) => `{
+//                   inventoryItemId: "${item.inventoryItemId}"
+//                   locationId: "gid://shopify/Location/${loc}"
+//                   quantity: ${0}
+//                 }`
+//                 )
+//                 .join(",")}]
+//             }
+//           ) {
+//             userErrors { field message }
+//           }
+//         `
+//       )
+//       .join("\n");
+
+//     const graphqlBody = JSON.stringify({ query: `mutation { ${mutationQuery} }` });
+
+//     const res = await fetch(
+//       `https://${fetchuser.dataValues.shop}/admin/api/2025-10/graphql.json`,
+//       { method: "POST", headers: myHeaders, body: graphqlBody }
+//     );
+
+//     const result = await res.json();
+//     console.log(`✅ Batch ${index + 1} zeroed out. Shopify response summary:`, JSON.stringify(result?.data || {}, null, 2));
+
+//     // Wait a bit between batches (Shopify API safety)
+//     await new Promise((r) => setTimeout(r, 1000));
+//   }
+
+//   console.log("🎯 Finished zeroing out all discontinued SKUs successfully!");
+// } catch (err) {
+//   console.error("❌ Error zeroing out discontinued SKUs:", err.message, err.stack);
+// }
+
 
 
       
