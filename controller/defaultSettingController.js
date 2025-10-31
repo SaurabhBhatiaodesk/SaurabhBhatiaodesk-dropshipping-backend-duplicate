@@ -165,8 +165,6 @@ class DefaultSettingController {
         myHeaders
       );
 
-      console.log(req.body,'-------------------------------req.body')
-
       const {
         csvFileData,
         defaultSetting,
