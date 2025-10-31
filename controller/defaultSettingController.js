@@ -371,8 +371,8 @@ class DefaultSettingController {
                     requestOptions
                   );
 
-                   // 🟢 1️⃣ Enable tracking before updating quantity
-// 🧩 Step 1️⃣ — Check if tracking is already enabled
+                   //  Enable tracking before updating quantity
+// 🧩 Step 1— Check if tracking is already enabled
 try {
   const checkTrackingQuery = JSON.stringify({
     query: `
@@ -421,17 +421,17 @@ try {
 
     const trackingData = await trackingResponse.json();
     if (trackingData?.data?.inventoryItemUpdate?.userErrors?.length) {
-      console.warn(`⚠️ Failed to enable tracking for ${inventoryItemID}:`, trackingData.data.inventoryItemUpdate.userErrors);
+      console.warn(`Failed to enable tracking for ${inventoryItemID}:`, trackingData.data.inventoryItemUpdate.userErrors);
     } else {
-      console.log(`✅ Tracking successfully enabled for ${inventoryItemID}`);
+      console.log(`Tracking successfully enabled for ${inventoryItemID}`);
     }
   } else if (tracked) {
-    console.log(`✅ Already tracked: ${inventoryItemID}`);
+    console.log(` Already tracked: ${inventoryItemID}`);
   } else {
-    console.log(`⚠️ Cannot enable tracking for ${inventoryItemID}. Reason: ${editableReason}`);
+    console.log(` Cannot enable tracking for ${inventoryItemID}. Reason: ${editableReason}`);
   }
 } catch (err) {
-  console.error(`❌ Tracking check error for ${inventoryItemID}:`, err.message);
+  console.error(` Tracking check error for ${inventoryItemID}:`, err.message);
 }
 
 
