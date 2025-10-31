@@ -432,7 +432,7 @@ cron.schedule("* * * * *", async () => {
 
       // console.log("formattedDate :", currentFormattedDate);
 
-      allCsvFilesData.forEach(async (csvFile) => {
+      allCsvFilesData.forEach((csvFile) => {
         const expireDate = new Date(csvFile.csvExpire);
 
         // console.log(`csvFile?.csvBufferQuantity ${index} :::`, csvFile?.csvBufferQuantity)
@@ -460,7 +460,7 @@ cron.schedule("* * * * *", async () => {
           // console.log("csvFile ::", csvFile);
 
           // if (csvFile?.shop === )
-          userFilteredData.forEach(async (user) => {
+          userFilteredData.forEach((user) => {
             if (csvFile?.shop === user?.shop) {
               // console.log("usersData.forEach if", user?.accessToken);
               // console.log("csvFile if ::", csvFile?.csvFileData);
@@ -594,10 +594,7 @@ cron.schedule("* * * * *", async () => {
                                   edge?.node?.variants?.edges || [];
                                 // console.log(`nodeArrayeeee :::`, nodeArray);
                                 nodeArray.forEach(async (node, index) => {
-                                  console.log(
-                                    `node?.node?.id ${index} ::`,
-                                    node?.node?.id
-                                  );
+                                 
                                   // const inventoryItemId =
                                   const inventoryItemId =
                                     node?.node?.inventoryItem?.id;
