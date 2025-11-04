@@ -163,6 +163,42 @@ class DefaultSettingController {
         myHeaders
       );
 
+      // Throttle-aware GraphQL helper (Shopify Admin API)
+      async function shopifyGraphQL(shopDomain, headers, body, opts = {}) {
+        const {
+          minRemaining = 50,
+          maxRetries = 8,
+          baseDelayMs = 400,
+        } = opts;
+
+        const url = `https://${shopDomain}/admin/api/2025-10/graphql.json`;
+        const payload = typeof body === "string" ? body : JSON.stringify(body);
+
+        for (let attempt = 0; attempt <= maxRetries; attempt++) {
+          const res = await fetch(url, { method: "POST", headers, body: payload });
+
+          if (res.status === 429) {
+            const retryAfter = parseFloat(res.headers.get("retry-after") || "1");
+            await new Promise(r => setTimeout(r, Math.max(retryAfter * 1000, baseDelayMs * (attempt + 1))));
+            continue;
+          }
+
+          if (res.status >= 500) {
+            await new Promise(r => setTimeout(r, baseDelayMs * (attempt + 1)));
+            continue;
+          }
+
+          const json = await res.json();
+          const throttle = json?.extensions?.cost?.throttleStatus;
+          if (throttle && throttle.currentlyAvailable < minRemaining) {
+            await new Promise(r => setTimeout(r, 1000));
+          }
+          return json;
+        }
+
+        throw new Error("GraphQL request failed after retries");
+      }
+
       const {
         csvFileData,
         defaultSetting,
@@ -1033,397 +1069,416 @@ try {
       }
 
 //  Step 2 — Zero out discontinued SKUs (Full, Safe, Paginated)
+try {
+  console.log("🔍 Zeroing discontinued SKUs (not present in uploaded CSV)...");
+
+  async function fetchAllShopifyLocations(shopDomain, headers) {
+    try {
+      const res = await fetch(`https://${shopDomain}/admin/api/2025-10/locations.json`, { method: "GET", headers });
+      const data = await res.json();
+      return data?.locations?.map((loc) => loc.id) || [];
+    } catch (err) {
+      console.error("Failed to fetch Shopify locations:", err.message);
+      return [];
+    }
+  }
+
+  async function fetchAllShopifyProducts(shopDomain, headers) {
+    let hasNextPage = true;
+    let cursor = null;
+    let allProducts = [];
+    while (hasNextPage) {
+      const query = {
+        query: `{
+          products(first: 250${cursor ? `, after: "${cursor}"` : ""}) {
+            edges { cursor node { id variants(first: 100) { edges { node { id sku inventoryItem { id } } } } } }
+            pageInfo { hasNextPage endCursor }
+          }
+        }`
+      };
+      const data = await shopifyGraphQL(fetchuser.dataValues.shop, myHeaders, query);
+      const products = data?.data?.products?.edges || [];
+      allProducts.push(...products);
+      hasNextPage = data?.data?.products?.pageInfo?.hasNextPage;
+      cursor = data?.data?.products?.pageInfo?.endCursor;
+      await new Promise(r => setTimeout(r, 300));
+    }
+    return allProducts;
+  }
+
+  function chunkArray(arr, size) {
+    const result = [];
+    for (let i = 0; i < arr.length; i += size) result.push(arr.slice(i, i + size));
+    return result;
+  }
+
+  const allProducts = await fetchAllShopifyProducts(fetchuser.dataValues.shop, myHeaders);
+  const alllocations = await fetchAllShopifyLocations(fetchuser.dataValues.shop, myHeaders);
+  const totalProductPages = allProducts.length;
+  const totalVariants = allProducts.reduce((acc, p) => acc + (p?.node?.variants?.edges?.length || 0), 0);
+  console.log(`📍 Locations found: ${alllocations.length}`);
+  console.log(`📦 Products pages fetched: ${totalProductPages}, total variants: ${totalVariants}`);
+
+  const shopifySkus = allProducts.flatMap((p) =>
+    p.node.variants.edges.map((v) => ({ sku: v.node.sku?.trim().toLowerCase() || null, inventoryItemId: v.node.inventoryItem?.id }))
+  );
+
+  const csvSkus = new Set(
+    (csvFile || [])
+      .map((i) => i[fileHeaders]?.trim().toLowerCase())
+      .filter(Boolean)
+  );
+
+  const discontinued = shopifySkus.filter((p) => !p.sku || !csvSkus.has(p.sku));
+  console.log(`📉 Discontinued SKUs detected: ${discontinued.length} (CSV rows: ${(csvFile || []).length})`);
+
+  const batchSize = 20;
+  const chunks = chunkArray(discontinued, batchSize);
+
+  let cumulativeZeroed = 0;
+  const failedBatches = [];
+  for (let index = 0; index < chunks.length; index++) {
+    const batch = chunks[index].filter((b) => b.inventoryItemId);
+    console.log(batch,'-----batch')
+    if (batch.length === 0) continue;
+    console.log(`🧹 Zeroing batch ${index + 1}/${chunks.length} — items in batch: ${batch.length}, locations per item: ${alllocations.length}`);
+    console.log(alllocations,'-------alllocations-----')
+
+    // Fetch per-item tracked and inventory levels, then build mutation only for valid levels
+    const idsArg = batch.map(b => `"${b.inventoryItemId}"`).join(",");
+    const nodesQuery = {
+      query: `{
+        nodes(ids: [${idsArg}]) {
+          ... on InventoryItem {
+            id
+            tracked
+            inventoryLevels(first: 250) { edges { node { location { id } } } }
+          }
+        }
+      }`
+    };
+    let nodesData = null;
+    try {
+      nodesData = await shopifyGraphQL(fetchuser.dataValues.shop, myHeaders, nodesQuery);
+    } catch (e) {
+      console.error(`❌ Batch ${index + 1} nodes() fetch failed:`, e?.message || e);
+      failedBatches.push({ index, batch, reason: "nodes_fetch_failed" });
+      await new Promise(r => setTimeout(r, 1500));
+      continue;
+    }
+
+    const nodeMap = new Map();
+    for (const n of (nodesData?.data?.nodes || [])) {
+      if (!n?.id) continue;
+      const levelLocs = (n?.inventoryLevels?.edges || []).map(e => e?.node?.location?.id).filter(Boolean);
+      nodeMap.set(n.id, { tracked: !!n.tracked, levelLocs: new Set(levelLocs) });
+    }
+
+    const ops = [];
+    let effectiveItems = 0;
+    for (let bi = 0; bi < batch.length; bi++) {
+      const item = batch[bi];
+      const meta = nodeMap.get(item.inventoryItemId);
+      if (!meta) { console.log(`↩️ Skip (no meta): ${item.inventoryItemId}`); continue; }
+      if (!meta.tracked) { console.log(`↩️ Skip (untracked): ${item.inventoryItemId}`); continue; }
+      const validLocs = alllocations
+        .map(loc => `gid://shopify/Location/${loc}`)
+        .filter(locGid => meta.levelLocs.has(locGid));
+      if (validLocs.length === 0) { console.log(`↩️ Skip (no inventory level at saved locations): ${item.inventoryItemId}`); continue; }
+      effectiveItems++;
+      const setQ = validLocs.map(locGid => `{
+        inventoryItemId: "${item.inventoryItemId}"
+        locationId: "${locGid}"
+        quantity: ${0}
+      }`).join(",");
+      ops.push(`op${bi}: inventorySetOnHandQuantities(input: { reason: \"correction\", setQuantities: [${setQ}] }) { userErrors { field message } }`);
+    }
+
+    if (ops.length === 0) {
+      console.log(`ℹ️ Batch ${index + 1}: nothing to zero (all untracked or no matching levels).`);
+      continue;
+    }
+
+    const mutationQuery = { query: `mutation { ${ops.join("\n")} }` };
+
+    try {
+      const result = await shopifyGraphQL(fetchuser.dataValues.shop, myHeaders, mutationQuery);
+      const hasErrors = result?.errors || (result?.data && Object.values(result.data).some((op) => op?.userErrors?.length));
+      if (hasErrors) console.warn("Some zeroing ops had errors:", JSON.stringify(result, null, 2));
+      cumulativeZeroed += effectiveItems;
+      console.log(`✅ Batch ${index + 1} completed. Zeroed so far: ${cumulativeZeroed}/${discontinued.length}`);
+      const throttle = result?.extensions?.cost?.throttleStatus;
+      const delay = throttle && throttle.currentlyAvailable > 1500 ? 600 : throttle && throttle.currentlyAvailable > 1000 ? 800 : 1200;
+      await new Promise(r => setTimeout(r, delay));
+    } catch (e) {
+      console.error(`❌ Batch ${index + 1} failed:`, e?.message || e);
+      failedBatches.push({ index, batch, mutationQuery });
+      await new Promise(r => setTimeout(r, 1500));
+    }
+  }
+
+  if (failedBatches.length) {
+    console.log(`🔁 Retrying ${failedBatches.length} failed batches...`);
+    for (const fb of failedBatches) {
+      try {
+        await shopifyGraphQL(fetchuser.dataValues.shop, myHeaders, { query: `mutation { ${fb.mutationQuery} }` });
+        console.log(`✅ Retry succeeded for batch ${fb.index + 1}`);
+      } catch (e) {
+        console.error(`❌ Retry failed for batch ${fb.index + 1}:`, e?.message || e);
+      }
+      await new Promise(r => setTimeout(r, 1000));
+    }
+  }
+
+  console.log(`🎯 Zero-out completed for discontinued SKUs. Total items zeroed: ${cumulativeZeroed} across ${alllocations.length} locations.`);
+} catch (err) {
+  console.error("Error during discontinued SKU handling:", err.message);
+}
+
+
+// 🧩 Step 2 — Handle discontinued SKUs intelligently (First-time vs. update logic)
 
 // try {
-//   console.log("🔍 Starting discontinued SKU check...");
- 
-//   // 🧩 Helper: Fetch all Shopify products with pagination
-//   async function fetchAllShopifyProducts(shopDomain, headers) {
-//     let hasNextPage = true;
-//     let cursor = null;
-//     let allProducts = [];
-//     let pageCount = 0;
+//   console.log("🔍 Checking whether CSV exists for shop before zeroing...");
 
-//     while (hasNextPage) {
-//       const query = JSON.stringify({
-//         query: `
-//           {
-//             products(first: 250${cursor ? `, after: "${cursor}"` : ""}) {
-//               edges {
-//                 cursor
-//                 node {
-//                   id
-//                   title
-//                   variants(first: 100) {
-//                     edges {
-//                       node {
-//                         id
-//                         sku
-//                         inventoryItem { id }
+//   // ✅ 1️⃣ Case: First CSV upload → zero all missing Shopify SKUs
+//   // if (existingCsvs.length <= 1) {
+//     console.log("🆕 First CSV upload detected — running full zero-out process.");
+
+//     // 🧩 Fetch all Shopify products (paginated)
+//     async function fetchAllShopifyProducts(shopDomain, headers) {
+//       let hasNextPage = true;
+//       let cursor = null;
+//       let allProducts = [];
+//       let pageCount = 0;
+
+//       while (hasNextPage) {
+//         const query = JSON.stringify({
+//           query: `
+//             {
+//               products(first: 250${cursor ? `, after: "${cursor}"` : ""}) {
+//                 edges {
+//                   cursor
+//                   node {
+//                     id
+//                     title
+//                     variants(first: 100) {
+//                       edges {
+//                         node {
+//                           id
+//                           sku
+//                           inventoryItem { id }
+//                         }
 //                       }
 //                     }
 //                   }
 //                 }
+//                 pageInfo { hasNextPage endCursor }
 //               }
-//               pageInfo { hasNextPage endCursor }
 //             }
-//           }
-//         `
-//       });
+//           `
+//         });
 
-//       const response = await fetch(
-//         `https://${shopDomain}/admin/api/2025-10/graphql.json`,
-//         { method: "POST", headers, body: query }
-//       );
+//         const response = await fetch(
+//           `https://${fetchuser.dataValues.shop}/admin/api/2025-10/graphql.json`,
+//           { method: "POST", headers, body: query }
+//         );
 
-//       const data = await response.json();
-//       const products = data?.data?.products?.edges || [];
+//         const data = await response.json();
+//         const products = data?.data?.products?.edges || [];
 
-//       allProducts.push(...products);
-//       pageCount++;
-//       console.log(`📦 Page ${pageCount}: fetched ${products.length} products (total ${allProducts.length})`);
+//         allProducts.push(...products);
+//         pageCount++;
+//         console.log(`📦 Page ${pageCount}: fetched ${products.length} products (total ${allProducts.length})`);
 
-//       hasNextPage = data?.data?.products?.pageInfo?.hasNextPage;
-//       cursor = data?.data?.products?.pageInfo?.endCursor;
+//         hasNextPage = data?.data?.products?.pageInfo?.hasNextPage;
+//         cursor = data?.data?.products?.pageInfo?.endCursor;
 
-//       // Avoid hitting Shopify API rate limit
-//       await new Promise((r) => setTimeout(r, 500));
+//         // avoid rate limit
+//         await new Promise((r) => setTimeout(r, 500));
+//       }
+
+//       console.log(`✅ Completed fetching ${allProducts.length} products from Shopify`);
+//       return allProducts;
 //     }
 
-//     console.log(`✅ Completed fetching ${allProducts.length} products from Shopify`);
-//     return allProducts;
-//   }
+//     function chunkArray(arr, size) {
+//       const result = [];
+//       for (let i = 0; i < arr.length; i += size) result.push(arr.slice(i, i + size));
+//       return result;
+//     }
 
-//   // 🧩 Helper: Chunk an array
-//   function chunkArray(arr, size) {
-//     const result = [];
-//     for (let i = 0; i < arr.length; i += size) result.push(arr.slice(i, i + size));
-//     return result;
-//   }
-
-//   // 🧩 Step 1 — Fetch all Shopify SKUs (with pagination)
-//   const allProducts = await fetchAllShopifyProducts(fetchuser.dataValues.shop, myHeaders);
-//   const shopifySkus = allProducts.flatMap((p) =>
-//     p.node.variants.edges.map((v) => ({
-//       sku: v.node.sku ? v.node.sku.trim().toLowerCase() : null,
-//       inventoryItemId: v.node.inventoryItem?.id,
-//     }))
-//   );
-
-//   // 🧩 Step 2 — Prepare CSV SKU set
-//   const csvSkus = new Set(
-//     csvFile
-//       .map((i) => i[fileHeaders]?.trim().toLowerCase())
-//       .filter(Boolean) // drop null / empty
-//   );
-
-//   // 🧩 Step 3 — Find discontinued (missing or null SKU)
-//   const discontinued = shopifySkus.filter(
-//     (p) => !p.sku || !csvSkus.has(p.sku)
-//   );
-
-//   console.log(`📉 Found ${discontinued.length} discontinued SKUs (to be zeroed out)`);
-
-//   if (discontinued.length === 0) {
-//     console.log("✅ No discontinued SKUs found — all in sync");
-//     return;
-//   }
-
-//   // 🧩 Step 4 — Zero out discontinued SKUs in batches
-//   const batchSize = 40;
-//   const chunks = chunkArray(discontinued, batchSize);
-
-//   for (let index = 0; index < chunks.length; index++) {
-//     const batch = chunks[index];
-//     console.log(`🧹 Zeroing batch ${index + 1}/${chunks.length} (${batch.length} SKUs)...`);
-
-//     // Build multiple mutations in one GraphQL call
-//     const mutationQuery = batch
-//       .filter((item) => item.inventoryItemId)
-//       .map(
-//         (item, idx) => `
-//           op${idx}: inventorySetOnHandQuantities(
-//             input: {
-//               reason: "correction"
-//               setQuantities: [${alllocations
-//                 .map(
-//                   (loc) => `{
-//                   inventoryItemId: "${item.inventoryItemId}"
-//                   locationId: "gid://shopify/Location/${loc}"
-//                   quantity: ${0}
-//                 }`
-//                 )
-//                 .join(",")}]
-//             }
-//           ) {
-//             userErrors { field message }
-//           }
-//         `
-//       )
-//       .join("\n");
-
-//     const graphqlBody = JSON.stringify({ query: `mutation { ${mutationQuery} }` });
-
-//     const res = await fetch(
-//       `https://${fetchuser.dataValues.shop}/admin/api/2025-10/graphql.json`,
-//       { method: "POST", headers: myHeaders, body: graphqlBody }
+//     const allProducts = await fetchAllShopifyProducts(fetchuser.dataValues.shop, myHeaders);
+//     const shopifySkus = allProducts.flatMap((p) =>
+//       p.node.variants.edges.map((v) => ({
+//         sku: v.node.sku ? v.node.sku.trim().toLowerCase() : null,
+//         inventoryItemId: v.node.inventoryItem?.id,
+//       }))
 //     );
 
-//     const result = await res.json();
-//     console.log(`✅ Batch ${index + 1} zeroed out. Shopify response summary:`, JSON.stringify(result?.data || {}, null, 2));
+//     const csvSkus = new Set(
+//       csvFile
+//         .map((i) => i[fileHeaders]?.trim().toLowerCase())
+//         .filter(Boolean)
+//     );
 
-//     // Wait a bit between batches (Shopify API safety)
-//     await new Promise((r) => setTimeout(r, 1000));
-//   }
+//     const discontinued = shopifySkus.filter(
+//       (p) => !p.sku || !csvSkus.has(p.sku)
+//     );
 
-//   console.log("🎯 Finished zeroing out all discontinued SKUs successfully!");
-// } catch (err) {
-//   console.error("❌ Error zeroing out discontinued SKUs:", err.message, err.stack);
-//   }
+//     console.log(`📉 Found ${discontinued.length} discontinued SKUs (first upload)`);
 
-// 🧩 Step 2 — Handle discontinued SKUs intelligently (First-time vs. update logic)
+//     const batchSize = 40;
+//     const chunks = chunkArray(discontinued, batchSize);
 
-try {
-  console.log("🔍 Checking whether CSV exists for shop before zeroing...");
+//     for (let index = 0; index < chunks.length; index++) {
+//       const batch = chunks[index];
+//       console.log(`🧹 Zeroing batch ${index + 1}/${chunks.length} (${batch.length} SKUs)...`);
+//       console.log(alllocations,'--------alllocations')
 
-  // ✅ 1️⃣ Case: First CSV upload → zero all missing Shopify SKUs
-  // if (existingCsvs.length <= 1) {
-    console.log("🆕 First CSV upload detected — running full zero-out process.");
+//       const mutationQuery = batch
+//         .filter((item) => item.inventoryItemId)
+//         .map(
+//           (item, idx) => `
+//             op${idx}: inventorySetOnHandQuantities(
+//               input: {
+//                 reason: "correction"
+//                 setQuantities: [${alllocations
+//                   .map(
+//                     (loc) => `{
+//                     inventoryItemId: "${item.inventoryItemId}"
+//                     locationId: "gid://shopify/Location/${loc}"
+//                     quantity: ${0}
+//                   }`
+//                   )
+//                   .join(",")}]
+//               }
+//             ) {
+//               userErrors { field message }
+//             }
+//           `
+//         )
+//         .join("\n");
 
-    // 🧩 Fetch all Shopify products (paginated)
-    async function fetchAllShopifyProducts(shopDomain, headers) {
-      let hasNextPage = true;
-      let cursor = null;
-      let allProducts = [];
-      let pageCount = 0;
+//       const graphqlBody = JSON.stringify({ query: `mutation { ${mutationQuery} }` });
+//       const res = await fetch(
+//         `https://${fetchuser.dataValues.shop}/admin/api/2025-10/graphql.json`,
+//         { method: "POST", headers: myHeaders, body: graphqlBody }
+//       );
 
-      while (hasNextPage) {
-        const query = JSON.stringify({
-          query: `
-            {
-              products(first: 250${cursor ? `, after: "${cursor}"` : ""}) {
-                edges {
-                  cursor
-                  node {
-                    id
-                    title
-                    variants(first: 100) {
-                      edges {
-                        node {
-                          id
-                          sku
-                          inventoryItem { id }
-                        }
-                      }
-                    }
-                  }
-                }
-                pageInfo { hasNextPage endCursor }
-              }
-            }
-          `
-        });
+//       const result = await res.json();
+//       console.log(`✅ Batch ${index + 1} done. Shopify response:`, JSON.stringify(result?.data || {}, null, 2));
+//       await new Promise((r) => setTimeout(r, 1000));
+//     }
 
-        const response = await fetch(
-          `https://${fetchuser.dataValues.shop}/admin/api/2025-10/graphql.json`,
-          { method: "POST", headers, body: query }
-        );
+//     console.log("🎯 Full zero-out completed (first CSV upload).");
 
-        const data = await response.json();
-        const products = data?.data?.products?.edges || [];
-
-        allProducts.push(...products);
-        pageCount++;
-        console.log(`📦 Page ${pageCount}: fetched ${products.length} products (total ${allProducts.length})`);
-
-        hasNextPage = data?.data?.products?.pageInfo?.hasNextPage;
-        cursor = data?.data?.products?.pageInfo?.endCursor;
-
-        // avoid rate limit
-        await new Promise((r) => setTimeout(r, 500));
-      }
-
-      console.log(`✅ Completed fetching ${allProducts.length} products from Shopify`);
-      return allProducts;
-    }
-
-    function chunkArray(arr, size) {
-      const result = [];
-      for (let i = 0; i < arr.length; i += size) result.push(arr.slice(i, i + size));
-      return result;
-    }
-
-    const allProducts = await fetchAllShopifyProducts(fetchuser.dataValues.shop, myHeaders);
-    const shopifySkus = allProducts.flatMap((p) =>
-      p.node.variants.edges.map((v) => ({
-        sku: v.node.sku ? v.node.sku.trim().toLowerCase() : null,
-        inventoryItemId: v.node.inventoryItem?.id,
-      }))
-    );
-
-    const csvSkus = new Set(
-      csvFile
-        .map((i) => i[fileHeaders]?.trim().toLowerCase())
-        .filter(Boolean)
-    );
-
-    const discontinued = shopifySkus.filter(
-      (p) => !p.sku || !csvSkus.has(p.sku)
-    );
-
-    console.log(`📉 Found ${discontinued.length} discontinued SKUs (first upload)`);
-
-    const batchSize = 40;
-    const chunks = chunkArray(discontinued, batchSize);
-
-    for (let index = 0; index < chunks.length; index++) {
-      const batch = chunks[index];
-      console.log(`🧹 Zeroing batch ${index + 1}/${chunks.length} (${batch.length} SKUs)...`);
-      console.log(alllocations,'--------alllocations')
-
-      const mutationQuery = batch
-        .filter((item) => item.inventoryItemId)
-        .map(
-          (item, idx) => `
-            op${idx}: inventorySetOnHandQuantities(
-              input: {
-                reason: "correction"
-                setQuantities: [${alllocations
-                  .map(
-                    (loc) => `{
-                    inventoryItemId: "${item.inventoryItemId}"
-                    locationId: "gid://shopify/Location/${loc}"
-                    quantity: ${0}
-                  }`
-                  )
-                  .join(",")}]
-              }
-            ) {
-              userErrors { field message }
-            }
-          `
-        )
-        .join("\n");
-
-      const graphqlBody = JSON.stringify({ query: `mutation { ${mutationQuery} }` });
-      const res = await fetch(
-        `https://${fetchuser.dataValues.shop}/admin/api/2025-10/graphql.json`,
-        { method: "POST", headers: myHeaders, body: graphqlBody }
-      );
-
-      const result = await res.json();
-      console.log(`✅ Batch ${index + 1} done. Shopify response:`, JSON.stringify(result?.data || {}, null, 2));
-      await new Promise((r) => setTimeout(r, 1000));
-    }
-
-    console.log("🎯 Full zero-out completed (first CSV upload).");
-
-  // } 
+//   // } 
   
-  // else {
-  //   // ✅ 2️⃣ Case: Subsequent CSV upload → compare with previous CSV and zero SKUs missing in new
-  //   console.log("📊 Existing CSVs found — comparing with latest previous CSV...");
+//   // else {
+//   //   // ✅ 2️⃣ Case: Subsequent CSV upload → compare with previous CSV and zero SKUs missing in new
+//   //   console.log("📊 Existing CSVs found — comparing with latest previous CSV...");
 
-  //   const previousCsv = existingCsvs[1]; // second newest (previous upload)
-  //   console.log(previousCsv,'------previousCsv')
-  //   const oldCsvData = previousCsv?.dataValues?.csvFileData || [];
-  //   console.log(oldCsvData,'------oldCsvData')
+//   //   const previousCsv = existingCsvs[1]; // second newest (previous upload)
+//   //   console.log(previousCsv,'------previousCsv')
+//   //   const oldCsvData = previousCsv?.dataValues?.csvFileData || [];
+//   //   console.log(oldCsvData,'------oldCsvData')
 
-  //   console.log(`Old CSV entries: ${oldCsvData.length}, New CSV entries: ${csvFile.length}`);
+//   //   console.log(`Old CSV entries: ${oldCsvData.length}, New CSV entries: ${csvFile.length}`);
 
-  //   const oldSkus = new Set(
-  //     oldCsvData
-  //       .map((i) => i[fileHeaders]?.trim().toLowerCase())
-  //       .filter(Boolean)
-  //   );
+//   //   const oldSkus = new Set(
+//   //     oldCsvData
+//   //       .map((i) => i[fileHeaders]?.trim().toLowerCase())
+//   //       .filter(Boolean)
+//   //   );
 
-  //   console.log(oldSkus,'-----oldSkus')
-  //   const newSkus = new Set(
-  //     csvFile
-  //       .map((i) => i[fileHeaders]?.trim().toLowerCase())
-  //       .filter(Boolean)
-  //   );
-  //   console.log(newSkus,'-----newSkus')
+//   //   console.log(oldSkus,'-----oldSkus')
+//   //   const newSkus = new Set(
+//   //     csvFile
+//   //       .map((i) => i[fileHeaders]?.trim().toLowerCase())
+//   //       .filter(Boolean)
+//   //   );
+//   //   console.log(newSkus,'-----newSkus')
 
 
-  //   const missingSkus = [...oldSkus].filter((sku) => !newSkus.has(sku));
+//   //   const missingSkus = [...oldSkus].filter((sku) => !newSkus.has(sku));
     
-  //   console.log(missingSkus,'-----missingSkus')
-  //   console.log(`📉 Found ${missingSkus.length} SKUs missing in new CSV (to be zeroed).`);
+//   //   console.log(missingSkus,'-----missingSkus')
+//   //   console.log(`📉 Found ${missingSkus.length} SKUs missing in new CSV (to be zeroed).`);
 
-  //   if (missingSkus?.length > 0) {
-  //     for (const sku of missingSkus) {
-  //       try {
-  //         const getInventoryItemQuery = JSON.stringify({
-  //           query: `
-  //             {
-  //               products(first: 1, query: "sku:${sku}") {
-  //                 edges {
-  //                   node {
-  //                     variants(first: 1) {
-  //                       edges {
-  //                         node {
-  //                           inventoryItem { id }
-  //                         }
-  //                       }
-  //                     }
-  //                   }
-  //                 }
-  //               }
-  //             }
-  //           `,
-  //         });
+//   //   if (missingSkus?.length > 0) {
+//   //     for (const sku of missingSkus) {
+//   //       try {
+//   //         const getInventoryItemQuery = JSON.stringify({
+//   //           query: `
+//   //             {
+//   //               products(first: 1, query: "sku:${sku}") {
+//   //                 edges {
+//   //                   node {
+//   //                     variants(first: 1) {
+//   //                       edges {
+//   //                         node {
+//   //                           inventoryItem { id }
+//   //                         }
+//   //                       }
+//   //                     }
+//   //                   }
+//   //                 }
+//   //               }
+//   //             }
+//   //           `,
+//   //         });
 
-  //         const resp = await fetch(
-  //           `https://${fetchuser.dataValues.shop}/admin/api/2025-10/graphql.json`,
-  //           { method: "POST", headers: myHeaders, body: getInventoryItemQuery }
-  //         );
-  //         const data = await resp.json();
-  //         const inventoryItemId =
-  //           data?.data?.products?.edges[0]?.node?.variants?.edges[0]?.node?.inventoryItem?.id;
+//   //         const resp = await fetch(
+//   //           `https://${fetchuser.dataValues.shop}/admin/api/2025-10/graphql.json`,
+//   //           { method: "POST", headers: myHeaders, body: getInventoryItemQuery }
+//   //         );
+//   //         const data = await resp.json();
+//   //         const inventoryItemId =
+//   //           data?.data?.products?.edges[0]?.node?.variants?.edges[0]?.node?.inventoryItem?.id;
 
-  //         if (!inventoryItemId) continue;
+//   //         if (!inventoryItemId) continue;
 
-  //         const mutation = JSON.stringify({
-  //           query: `mutation {
-  //             inventorySetOnHandQuantities(
-  //               input: {
-  //                 reason: "correction"
-  //                 setQuantities: [${alllocations
-  //                   .map(
-  //                     (loc) => `{
-  //                       inventoryItemId: "${inventoryItemId}"
-  //                       locationId: "gid://shopify/Location/${loc}"
-  //                       quantity: ${0}
-  //                     }`
-  //                   )
-  //                   .join(",")}]
-  //               }
-  //             ) { userErrors { field message } }
-  //           }`,
-  //         });
+//   //         const mutation = JSON.stringify({
+//   //           query: `mutation {
+//   //             inventorySetOnHandQuantities(
+//   //               input: {
+//   //                 reason: "correction"
+//   //                 setQuantities: [${alllocations
+//   //                   .map(
+//   //                     (loc) => `{
+//   //                       inventoryItemId: "${inventoryItemId}"
+//   //                       locationId: "gid://shopify/Location/${loc}"
+//   //                       quantity: ${0}
+//   //                     }`
+//   //                   )
+//   //                   .join(",")}]
+//   //               }
+//   //             ) { userErrors { field message } }
+//   //           }`,
+//   //         });
 
-  //         const zeroRes = await fetch(
-  //           `https://${fetchuser.dataValues.shop}/admin/api/2025-10/graphql.json`,
-  //           { method: "POST", headers: myHeaders, body: mutation }
-  //         );
+//   //         const zeroRes = await fetch(
+//   //           `https://${fetchuser.dataValues.shop}/admin/api/2025-10/graphql.json`,
+//   //           { method: "POST", headers: myHeaders, body: mutation }
+//   //         );
 
-  //         const zeroData = await zeroRes.json();
-  //         console.log(`🧹 Zeroed SKU ${sku}`, zeroData?.data || zeroData?.errors);
-  //         await new Promise((r) => setTimeout(r, 300));
-  //       } catch (err) {
-  //         console.error(`❌ Error zeroing SKU ${sku}:`, err.message);
-  //       }
-  //     }
+//   //         const zeroData = await zeroRes.json();
+//   //         console.log(`🧹 Zeroed SKU ${sku}`, zeroData?.data || zeroData?.errors);
+//   //         await new Promise((r) => setTimeout(r, 300));
+//   //       } catch (err) {
+//   //         console.error(`❌ Error zeroing SKU ${sku}:`, err.message);
+//   //       }
+//   //     }
 
-  //     console.log("✅ Finished zeroing SKUs missing from new CSV.");
-  //   } else {
-  //     console.log("✅ No missing SKUs between old and new CSV — no zeroing needed.");
-  //   }
-  // }
-} catch (err) {
-  console.error("❌ Error during discontinued SKU handling:", err.message, err.stack);
-}
+//   //     console.log("✅ Finished zeroing SKUs missing from new CSV.");
+//   //   } else {
+//   //     console.log("✅ No missing SKUs between old and new CSV — no zeroing needed.");
+//   //   }
+//   // }
+// } catch (err) {
+//   console.error("❌ Error during discontinued SKU handling:", err.message, err.stack);
+// }
 
 
 
