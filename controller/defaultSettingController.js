@@ -1187,7 +1187,7 @@ try {
   console.log("🔍 Checking whether CSV exists for shop before zeroing...");
 
   // ✅ 1️⃣ Case: First CSV upload → zero all missing Shopify SKUs
-  if (existingCsvs.length <= 1) {
+  // if (existingCsvs.length <= 1) {
     console.log("🆕 First CSV upload detected — running full zero-out process.");
 
     // 🧩 Fetch all Shopify products (paginated)
@@ -1279,6 +1279,7 @@ try {
     for (let index = 0; index < chunks.length; index++) {
       const batch = chunks[index];
       console.log(`🧹 Zeroing batch ${index + 1}/${chunks.length} (${batch.length} SKUs)...`);
+      console.log(alllocations,'--------alllocations')
 
       const mutationQuery = batch
         .filter((item) => item.inventoryItemId)
@@ -1317,107 +1318,109 @@ try {
 
     console.log("🎯 Full zero-out completed (first CSV upload).");
 
-  } else {
-    // ✅ 2️⃣ Case: Subsequent CSV upload → compare with previous CSV and zero SKUs missing in new
-    console.log("📊 Existing CSVs found — comparing with latest previous CSV...");
+  // } 
+  
+  // else {
+  //   // ✅ 2️⃣ Case: Subsequent CSV upload → compare with previous CSV and zero SKUs missing in new
+  //   console.log("📊 Existing CSVs found — comparing with latest previous CSV...");
 
-    const previousCsv = existingCsvs[1]; // second newest (previous upload)
-    console.log(previousCsv,'------previousCsv')
-    const oldCsvData = previousCsv?.dataValues?.csvFileData || [];
-    console.log(oldCsvData,'------oldCsvData')
+  //   const previousCsv = existingCsvs[1]; // second newest (previous upload)
+  //   console.log(previousCsv,'------previousCsv')
+  //   const oldCsvData = previousCsv?.dataValues?.csvFileData || [];
+  //   console.log(oldCsvData,'------oldCsvData')
 
-    console.log(`Old CSV entries: ${oldCsvData.length}, New CSV entries: ${csvFile.length}`);
+  //   console.log(`Old CSV entries: ${oldCsvData.length}, New CSV entries: ${csvFile.length}`);
 
-    const oldSkus = new Set(
-      oldCsvData
-        .map((i) => i[fileHeaders]?.trim().toLowerCase())
-        .filter(Boolean)
-    );
+  //   const oldSkus = new Set(
+  //     oldCsvData
+  //       .map((i) => i[fileHeaders]?.trim().toLowerCase())
+  //       .filter(Boolean)
+  //   );
 
-    console.log(oldSkus,'-----oldSkus')
-    const newSkus = new Set(
-      csvFile
-        .map((i) => i[fileHeaders]?.trim().toLowerCase())
-        .filter(Boolean)
-    );
-    console.log(newSkus,'-----newSkus')
+  //   console.log(oldSkus,'-----oldSkus')
+  //   const newSkus = new Set(
+  //     csvFile
+  //       .map((i) => i[fileHeaders]?.trim().toLowerCase())
+  //       .filter(Boolean)
+  //   );
+  //   console.log(newSkus,'-----newSkus')
 
 
-    const missingSkus = [...oldSkus].filter((sku) => !newSkus.has(sku));
+  //   const missingSkus = [...oldSkus].filter((sku) => !newSkus.has(sku));
     
-    console.log(missingSkus,'-----missingSkus')
-    console.log(`📉 Found ${missingSkus.length} SKUs missing in new CSV (to be zeroed).`);
+  //   console.log(missingSkus,'-----missingSkus')
+  //   console.log(`📉 Found ${missingSkus.length} SKUs missing in new CSV (to be zeroed).`);
 
-    if (missingSkus?.length > 0) {
-      for (const sku of missingSkus) {
-        try {
-          const getInventoryItemQuery = JSON.stringify({
-            query: `
-              {
-                products(first: 1, query: "sku:${sku}") {
-                  edges {
-                    node {
-                      variants(first: 1) {
-                        edges {
-                          node {
-                            inventoryItem { id }
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            `,
-          });
+  //   if (missingSkus?.length > 0) {
+  //     for (const sku of missingSkus) {
+  //       try {
+  //         const getInventoryItemQuery = JSON.stringify({
+  //           query: `
+  //             {
+  //               products(first: 1, query: "sku:${sku}") {
+  //                 edges {
+  //                   node {
+  //                     variants(first: 1) {
+  //                       edges {
+  //                         node {
+  //                           inventoryItem { id }
+  //                         }
+  //                       }
+  //                     }
+  //                   }
+  //                 }
+  //               }
+  //             }
+  //           `,
+  //         });
 
-          const resp = await fetch(
-            `https://${fetchuser.dataValues.shop}/admin/api/2025-10/graphql.json`,
-            { method: "POST", headers: myHeaders, body: getInventoryItemQuery }
-          );
-          const data = await resp.json();
-          const inventoryItemId =
-            data?.data?.products?.edges[0]?.node?.variants?.edges[0]?.node?.inventoryItem?.id;
+  //         const resp = await fetch(
+  //           `https://${fetchuser.dataValues.shop}/admin/api/2025-10/graphql.json`,
+  //           { method: "POST", headers: myHeaders, body: getInventoryItemQuery }
+  //         );
+  //         const data = await resp.json();
+  //         const inventoryItemId =
+  //           data?.data?.products?.edges[0]?.node?.variants?.edges[0]?.node?.inventoryItem?.id;
 
-          if (!inventoryItemId) continue;
+  //         if (!inventoryItemId) continue;
 
-          const mutation = JSON.stringify({
-            query: `mutation {
-              inventorySetOnHandQuantities(
-                input: {
-                  reason: "correction"
-                  setQuantities: [${alllocations
-                    .map(
-                      (loc) => `{
-                        inventoryItemId: "${inventoryItemId}"
-                        locationId: "gid://shopify/Location/${loc}"
-                        quantity: ${0}
-                      }`
-                    )
-                    .join(",")}]
-                }
-              ) { userErrors { field message } }
-            }`,
-          });
+  //         const mutation = JSON.stringify({
+  //           query: `mutation {
+  //             inventorySetOnHandQuantities(
+  //               input: {
+  //                 reason: "correction"
+  //                 setQuantities: [${alllocations
+  //                   .map(
+  //                     (loc) => `{
+  //                       inventoryItemId: "${inventoryItemId}"
+  //                       locationId: "gid://shopify/Location/${loc}"
+  //                       quantity: ${0}
+  //                     }`
+  //                   )
+  //                   .join(",")}]
+  //               }
+  //             ) { userErrors { field message } }
+  //           }`,
+  //         });
 
-          const zeroRes = await fetch(
-            `https://${fetchuser.dataValues.shop}/admin/api/2025-10/graphql.json`,
-            { method: "POST", headers: myHeaders, body: mutation }
-          );
+  //         const zeroRes = await fetch(
+  //           `https://${fetchuser.dataValues.shop}/admin/api/2025-10/graphql.json`,
+  //           { method: "POST", headers: myHeaders, body: mutation }
+  //         );
 
-          const zeroData = await zeroRes.json();
-          console.log(`🧹 Zeroed SKU ${sku}`, zeroData?.data || zeroData?.errors);
-          await new Promise((r) => setTimeout(r, 300));
-        } catch (err) {
-          console.error(`❌ Error zeroing SKU ${sku}:`, err.message);
-        }
-      }
+  //         const zeroData = await zeroRes.json();
+  //         console.log(`🧹 Zeroed SKU ${sku}`, zeroData?.data || zeroData?.errors);
+  //         await new Promise((r) => setTimeout(r, 300));
+  //       } catch (err) {
+  //         console.error(`❌ Error zeroing SKU ${sku}:`, err.message);
+  //       }
+  //     }
 
-      console.log("✅ Finished zeroing SKUs missing from new CSV.");
-    } else {
-      console.log("✅ No missing SKUs between old and new CSV — no zeroing needed.");
-    }
-  }
+  //     console.log("✅ Finished zeroing SKUs missing from new CSV.");
+  //   } else {
+  //     console.log("✅ No missing SKUs between old and new CSV — no zeroing needed.");
+  //   }
+  // }
 } catch (err) {
   console.error("❌ Error during discontinued SKU handling:", err.message, err.stack);
 }
