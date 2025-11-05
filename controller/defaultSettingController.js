@@ -215,11 +215,8 @@ class DefaultSettingController {
         fileTagHeader,
       } = req.body;
 
-      // const alllocations = [87867654460, 87867621692, 97364967740];
-      
       const alllocations = req.body.locations;
 
-      // console.log("req.bodyreq.bodyreq.bodyreq.body", req.body);
 
       const addcsvfile = await csvfileDataModel.create({
         shop: fetchuser.dataValues.shop,
