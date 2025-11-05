@@ -37,7 +37,7 @@ class DefaultSettingController {
 
       var graphql = JSON.stringify({
         query:
-          "{\r\n  shop {\r\n    locations(first: 10) {\r\n      edges {\r\n        node {\r\n          name\r\n          id\r\n        }\r\n      }\r\n    }\r\n  }\r\n}",
+          "{\r\n  shop {\r\n    locations(first: 250) {\r\n      edges {\r\n        node {\r\n          name\r\n          id\r\n        }\r\n      }\r\n    }\r\n  }\r\n}",
         variables: {},
       });
       var requestOptions = {
