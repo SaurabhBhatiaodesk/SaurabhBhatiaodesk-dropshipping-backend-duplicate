@@ -15,7 +15,6 @@ class DefaultSettingController {
 
   fetchStoreLocation = async (req, res, next) => {
     try {
-      console.log("req.user.id", req.user.id);
 
       const fetchuser = await userModel.findOne({
         where: {
