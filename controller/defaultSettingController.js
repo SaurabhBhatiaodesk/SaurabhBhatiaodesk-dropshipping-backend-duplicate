@@ -670,13 +670,11 @@ try {
                     `https://${fetchuser?.dataValues?.shop}/admin/api/2023-10/graphql.json`,
                     requestOptions
                   );
-                  console.log(updateContinewSeeling,'----------------updateContinewSeeling----------------')
 
 
                 }
               }
             } else {
-              console.log("match tags----------------------------------");
               const progressPercentage = (processedCount / totalItems) * 100;
 
               socketIo.emit("progress", { percentage: progressPercentage });
@@ -765,10 +763,6 @@ try {
                       console.log(
                         "inventoryItemIDinventoryItemID",
                         inventoryItemID
-                      );
-                      console.log(
-                        "ProductVariantIDProductVariantIDProductVariantID----sku600",
-                        ProductVariantID
                       );
                       
 
