@@ -1214,7 +1214,7 @@ try {
         await shopifyGraphQL(fetchuser.dataValues.shop, myHeaders, { query: `mutation { ${fb.mutationQuery} }` });
         console.log(`✅ Retry succeeded for batch ${fb.index + 1}`);
       } catch (e) {
-        console.error(`❌ Retry failed for batch ${fb.index + 1}:`, e?.message || e);
+        console.error(`Retry failed for batch ${fb.index + 1}:`, e?.message || e);
       }
       await new Promise(r => setTimeout(r, 1000));
     }
@@ -1226,7 +1226,7 @@ try {
 }
 
 
-// 🧩 Step 2 — Handle discontinued SKUs intelligently (First-time vs. update logic)
+// Step 2 — Handle discontinued SKUs intelligently (First-time vs. update logic)
 
 // try {
 //   console.log("🔍 Checking whether CSV exists for shop before zeroing...");
@@ -1467,7 +1467,7 @@ try {
 //   //   }
 //   // }
 // } catch (err) {
-//   console.error("❌ Error during discontinued SKU handling:", err.message, err.stack);
+//   console.error("Error during discontinued SKU handling:", err.message, err.stack);
 // }
 
 
